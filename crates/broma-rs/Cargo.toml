@@ -1,0 +1,10 @@
+[package]
+name = "broma-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bitflags = "2.11.0"
+pest = "2.8.6"
+pest_derive = "2.8.6"
+thiserror = "2.0.18"

@@ -1,0 +1,196 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+COMMENT = _{ line_comment | block_comment }
+line_comment = { "//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE? }
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+// separator (zero or more whitespace/comments)
+sep = _{ (WHITESPACE | COMMENT)* }
+
+// identifier and qualified identifier
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+qualified = @{ identifier ~ template_start? ~ ("::" ~ identifier ~ template_start?)* }
+
+// string literal
+string_literal = @{ ("\"" ~ (!"\"" ~ ANY)* ~ "\"") | ("'" ~ (!"'" ~ ANY)* ~ "'") }
+
+// hex literal
+hex = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+
+// number
+number = @{ ASCII_DIGIT+ }
+
+// keywords
+kw_const = @{ "const" ~ !ASCII_ALPHANUMERIC }
+kw_static = @{ "static" ~ !ASCII_ALPHANUMERIC }
+kw_virtual = @{ "virtual" ~ !ASCII_ALPHANUMERIC }
+kw_callback = @{ "callback" ~ !ASCII_ALPHANUMERIC }
+kw_inline = @{ "inline" ~ !ASCII_ALPHANUMERIC }
+kw_default = @{ "default" ~ !ASCII_ALPHANUMERIC }
+kw_class = @{ "class" ~ !ASCII_ALPHANUMERIC }
+kw_struct = @{ "struct" ~ !ASCII_ALPHANUMERIC }
+kw_unsigned = @{ "unsigned" ~ !ASCII_ALPHANUMERIC }
+kw_long = @{ "long" ~ !ASCII_ALPHANUMERIC }
+kw_protected = @{ "protected" ~ !ASCII_ALPHANUMERIC }
+kw_private = @{ "private" ~ !ASCII_ALPHANUMERIC }
+kw_pad = @{ "PAD" ~ !ASCII_ALPHANUMERIC }
+
+// platform keywords
+kw_mac = @{ "mac" ~ !ASCII_ALPHANUMERIC }
+kw_win = @{ "win" ~ !ASCII_ALPHANUMERIC }
+kw_ios = @{ "ios" ~ !ASCII_ALPHANUMERIC }
+kw_android = @{ "android" ~ !ASCII_ALPHANUMERIC }
+kw_android32 = @{ "android32" ~ !ASCII_ALPHANUMERIC }
+kw_android64 = @{ "android64" ~ !ASCII_ALPHANUMERIC }
+kw_imac = @{ "imac" ~ !ASCII_ALPHANUMERIC }
+kw_m1 = @{ "m1" ~ !ASCII_ALPHANUMERIC }
+
+platform = _{ kw_mac | kw_win | kw_ios | kw_android | kw_android32 | kw_android64 | kw_imac | kw_m1 }
+platform_list = _{ platform ~ ("," ~ platform)* }
+
+// template expression
+template_start = _{ "<" ~ template_content* ~ ">" }
+template_content = _{ string_literal | template_start | (!">" ~ !"<" ~ ANY) | "<" ~ template_content* }
+
+// braced expression
+brace_start = _{ "{" ~ brace_content* ~ "}" }
+brace_content = _{ string_literal | brace_start | (!"}" ~ !")" ~ !"{" ~ ANY) }
+
+// type
+type = { type_content }
+type_content = {
+    // vararg
+    "..." |
+    // regular type
+    (
+        kw_const? ~
+        kw_struct? ~
+        kw_const? ~
+        kw_unsigned? ~
+        long_qualified ~
+        kw_const? ~
+        ("&" | "*")* ~
+        kw_const?
+    )
+}
+long_qualified = _{
+    (kw_long ~ kw_long?) |
+    qualified?
+}
+
+// attribute
+docs_content = { (!NEWLINE ~ ANY)* }
+docs_attribute = ${ "///" ~ docs_content ~ NEWLINE? }
+attribute_inner = { depends_attribute | link_attribute | missing_attribute | since_attribute }
+depends_attribute = { "depends" ~ "(" ~ qualified ~ ("," ~ qualified)* ~ ")" }
+link_attribute = { "link" ~ "(" ~ platform_list? ~ ")" }
+missing_attribute = { "missing" ~ "(" ~ platform_list? ~ ")" }
+since_attribute = { "since" ~ "(" ~ string_literal ~ ")" }
+attribute = {
+    docs_attribute* ~
+    ("[[" ~ attribute_inner ~ ("," ~ attribute_inner)* ~ "]]")?
+}
+
+// argument list
+arg_list = {
+    "(" ~
+    (type ~ sep ~ identifier? ~ ("," ~ sep ~ type ~ sep ~ identifier?)*)? ~
+    ")"
+}
+
+// function prototype
+function_proto = {
+    type ~ sep ~ identifier ~ arg_list
+}
+
+// member function prototype
+member_function_proto = {
+    sep ~ attribute ~ sep ~
+    (kw_protected | kw_private)? ~ sep ~
+    (
+        // constructor/destructor
+        (kw_virtual? ~ tilde? ~ identifier ~ arg_list) |
+        // member function
+        ((kw_static | kw_virtual | kw_callback)? ~ sep ~ type ~ sep ~ identifier ~ arg_list ~ sep ~ kw_const?)
+    )
+}
+tilde = { "~" }
+
+// bind
+bind_value = _{ hex | kw_default | kw_inline }
+bind_platform = { platform ~ sep ~ bind_value }
+bind_inline = { kw_inline }
+bind_item = { bind_platform | bind_inline }
+bind = {
+    ("=" ~ (bind_item ~ ("," ~ bind_item)*) ~ sep)? ~
+    (function_body | ";")
+}
+function_body = { (":" ~ until_brace)? ~ brace_start }
+until_brace = _{ (!"{" ~ ANY)* }
+
+// funktion
+function = {
+    function_proto ~ sep ~ bind
+}
+
+// bind expression
+bind_expr = {
+    member_function_proto ~ sep ~ bind
+}
+
+// member variable
+member_expr = {
+    platform? ~ type ~ sep ~ identifier ~ sep ~ ("[" ~ number ~ "]")? ~ sep ~ ";"
+}
+
+// pad expression
+pad_expr = {
+    kw_pad ~ sep ~
+    (
+        bind |
+        ("=" ~ sep ~ hex ~ sep ~ ";")
+    )
+}
+
+// inline expression
+inline_expr = {
+    kw_inline ~
+    (
+        // inline with body
+        brace_start |
+        // inline without braces
+        (!NEWLINE ~ ANY)*
+    )
+}
+
+// class field
+field = { inline_expr | pad_expr | member_expr | bind_expr }
+
+// platform expression block
+platform_expr = {
+    platform_list ~ sep ~ "{" ~ sep ~ (field ~ sep)* ~ "}"
+}
+
+// klass
+class_statement = {
+    "class" ~ sep ~ qualified ~ sep ~
+    (":" ~ sep ~ qualified ~ ("," ~ sep ~ qualified)*)? ~
+    sep ~ "{" ~ sep ~
+    (field | platform_expr)* ~ sep ~
+    "}"
+}
+
+// import
+import_name = @{ (!">" ~ ANY)+ }
+import_expr = {
+    "#import" ~ sep ~ platform? ~ "<" ~ import_name ~ ">"
+}
+
+// include
+include_name = @{ (!">" ~ ANY)+ }
+include_expr = {
+    "#include" ~ "<" ~ include_name ~ ">"
+}
+
+// root grammar
+root = { SOI ~ sep ~ (import_expr | include_expr | attribute ~ sep ~ (class_statement | function))* ~ sep ~ EOI }
