@@ -92,6 +92,75 @@ lazy_static::lazy_static! {
         s.insert("_ccV3F_C4B_T2F_Quad");
         s.insert("_ccV3F_C4B_T2F_Quad");
         s.insert("ccHSVValue");
+        s.insert("ccBezierConfig");
+        s.insert("ccBMFontDef");
+        s.insert("ccBMFontPadding");
+        s.insert("ccPVRTexturePixelFormatInfo");
+        s.insert("ccPointSprite");
+        s.insert("tCCParticle");
+        s.insert("sCCParticle");
+        s.insert("tCCFontDefHashElement");
+        s.insert("tCCKerningHashElement");
+        s.insert("CCSetIterator");
+        s.insert("GLLogFunction");
+        s.insert("GLshort");
+        s.insert("GLclampf");
+        s.insert("GLvoid");
+        s.insert("GLchar");
+        s.insert("BYTE");
+        s.insert("UINT");
+        s.insert("SHORT");
+        s.insert("LONG");
+        s.insert("WCHAR");
+        s.insert("LPCWSTR");
+        s.insert("LONGLONG");
+        s.insert("WPARAM");
+        s.insert("UINT_PTR");
+        s.insert("cc_timeval");
+        s.insert("ccColor4F");
+        s.insert("ccV3F_C4B_T2F_Quad");
+        s.insert("CCIMEKeyboardNotificationInfo");
+        s.insert("SEL_MenuHandler");
+        s.insert("SEL_CallFunc");
+        s.insert("ccColor3B");
+        s.insert("enumKeyCodes");
+        s.insert("LanguageType");
+        s.insert("CCObjectType");
+        s.insert("ccGLServerState");
+        s.insert("ccScriptType");
+        s.insert("BorderAlignment");
+        s.insert("TextureQuality");
+        s.insert("PopTransition");
+        s.insert("ccKeypadMSGType");
+        s.insert("tOrientation");
+        s.insert("tCCMenuState");
+        s.insert("CCProgressTimerType");
+        s.insert("eImageFormat");
+        s.insert("tCCPositionType");
+        s.insert("TargetPlatform");
+        s.insert("ccTouchSelectorFlag");
+        s.insert("ccTouchType");
+        s.insert("BOOL");
+        s.insert("CCControlEvent");
+        s.insert("SEL_CCControlHandler");
+        s.insert("CCSortableObject");
+        s.insert("CCScale9Sprite");
+        s.insert("CCControlColourPicker");
+        s.insert("CCHttpRequest");
+        s.insert("CCHttpResponse");
+        s.insert("HSV");
+        s.insert("RGBA");
+        s.insert("EditBoxInputFlag");
+        s.insert("EditBoxInputMode");
+        s.insert("KeyboardReturnType");
+        s.insert("CCTableViewVerticalFillOrder");
+        s.insert("CCScrollViewDelegate");
+        s.insert("CCTableViewDataSource");
+        s.insert("CCTableViewCell");
+        s.insert("CCMouseDelegate");
+        s.insert("CCEvent");
+        s.insert("CCTextFieldTTF");
+        s.insert("CCIMEKeyboardNotificationInfo");
         s
     };
 }
@@ -119,6 +188,11 @@ pub enum RustType {
     KnownClass(String),
     CocosType(String),
     Opaque(String),
+    Vector(Box<RustType>),
+    Set(Box<RustType>),
+    UnorderedMap(Box<RustType>, Box<RustType>),
+    Map(Box<RustType>, Box<RustType>),
+    UnorderedSet(Box<RustType>),
     Pointer(Box<RustType>, bool),
     Reference(Box<RustType>, bool),
     FunctionPtr {
@@ -135,7 +209,14 @@ impl RustType {
             RustType::Primitive(s) => s.clone(),
             RustType::KnownClass(s) => s.clone(),
             RustType::CocosType(s) => s.clone(),
-            RustType::Opaque(s) => format!("/* {s} */ c_void"),
+            RustType::Vector(inner) => format!("GdVector<{}>", inner.to_rust_str()),
+            RustType::Set(inner) => format!("GdSet<{}>", inner.to_rust_str()),
+            RustType::Map(k, v) => format!("GdMap<{}, {}>", k.to_rust_str(), v.to_rust_str()),
+            RustType::UnorderedMap(k, v) => {
+                format!("GdUnorderedMap<{}, {}>", k.to_rust_str(), v.to_rust_str())
+            }
+            RustType::UnorderedSet(inner) => format!("GdUnorderedSet<{}>", inner.to_rust_str()),
+            RustType::Opaque(s) => format!("/* {s} (opaque) */ *mut c_void"),
             RustType::Pointer(inner, is_const) => {
                 let inner_str = inner.to_rust_str();
                 if *is_const {
@@ -164,9 +245,29 @@ impl RustType {
             RustType::Array(inner, size) => {
                 format!("[{}; {}]", inner.to_rust_str(), size)
             }
-            RustType::Unknown(s) => format!("/* {s} */ c_void"),
+            RustType::Unknown(s) => format!("/* {s} (unk) */ c_int"), // assume C enum.. TODO: port geode additions
         }
     }
+}
+
+fn split_template_args(s: &str) -> Vec<&str> {
+    let mut args = Vec::new();
+    let mut depth = 0;
+    let mut last_start = 0;
+
+    for (i, c) in s.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                args.push(s[last_start..i].trim());
+                last_start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    args.push(s[last_start..].trim());
+    args
 }
 
 pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
@@ -205,6 +306,15 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
         return RustType::KnownClass(type_str.to_string());
     }
 
+    if let Some(name) = type_str.strip_prefix("cocos2d::extension::") {
+        if is_cocos_type(name) {
+            return RustType::CocosType(name.to_string());
+        }
+        if is_known_class(name) {
+            return RustType::KnownClass(name.to_string());
+        }
+    }
+
     if let Some(name) = type_str.strip_prefix("cocos2d::") {
         if is_cocos_type(name) {
             return RustType::CocosType(name.to_string());
@@ -222,21 +332,49 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
     }
 
     if let Some(name) = type_str.strip_prefix("gd::") {
-        match name {
-            "string" => return RustType::KnownClass("GdString".to_string()),
-            "string const&" | "string&" => {
-                return RustType::Reference(
-                    Box::new(RustType::KnownClass("GdString".to_string())),
-                    true,
+        if let Some(inner) = name
+            .strip_prefix("vector<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
+            return RustType::Vector(Box::new(cpp_to_rust_type(inner.trim())));
+        }
+
+        if let Some(inner) = name.strip_prefix("set<").and_then(|s| s.strip_suffix('>')) {
+            return RustType::Set(Box::new(cpp_to_rust_type(inner.trim())));
+        }
+
+        if let Some(inner) = name
+            .strip_prefix("unordered_set<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
+            return RustType::UnorderedSet(Box::new(cpp_to_rust_type(inner.trim())));
+        }
+
+        if let Some(inner) = name
+            .strip_prefix("unordered_map<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
+            let args = split_template_args(inner);
+            if args.len() >= 2 {
+                return RustType::UnorderedMap(
+                    Box::new(cpp_to_rust_type(args[0])),
+                    Box::new(cpp_to_rust_type(args[1])),
                 );
             }
-            _ if name.starts_with("vector")
-                || name.starts_with("map")
-                || name.starts_with("unordered_map")
-                || name.starts_with("set") =>
-            {
-                return RustType::Opaque(type_str.to_string());
+        }
+
+        if let Some(inner) = name.strip_prefix("map<").and_then(|s| s.strip_suffix('>')) {
+            let args = split_template_args(inner);
+            if args.len() >= 2 {
+                return RustType::Map(
+                    Box::new(cpp_to_rust_type(args[0])),
+                    Box::new(cpp_to_rust_type(args[1])),
+                );
             }
+        }
+
+        match name {
+            "string" => return RustType::KnownClass("GdString".to_string()),
             _ => {}
         }
     }
@@ -246,8 +384,17 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
         if rest.starts_with("string") {
             return RustType::KnownClass("GdString".to_string());
         }
-        if rest.starts_with("array") {
-            return RustType::Opaque(type_str.to_string());
+        if let Some(inner) = rest
+            .strip_prefix("array<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
+            let args = split_template_args(inner);
+            if args.len() == 2 {
+                let inner_type = cpp_to_rust_type(args[0].trim());
+                if let Ok(size) = args[1].trim().parse::<usize>() {
+                    return RustType::Array(Box::new(inner_type), size);
+                }
+            }
         }
         return RustType::Opaque(type_str.to_string());
     }
@@ -275,9 +422,54 @@ pub fn generate_types_mod(use_cocos_bindgen: bool) -> String {
     output.push_str("pub type c_float = f32;\n");
     output.push_str("pub type c_double = f64;\n\n");
 
-    output.push_str("#[repr(C)]\npub struct GdString {\n    _data: *mut c_void,\n}\n\n");
+    output.push_str(
+        r#"#[repr(C)]
+pub struct GdString {
+    _storage: [u8; 16],
+    _size: usize,
+    _capacity: usize,
+}
 
-    output.push_str("#[repr(C)]\npub struct GdVector<T> {\n    _data: *mut T,\n    _size: usize,\n    _capacity: usize,\n}\n\n");
+#[repr(C)]
+pub struct GdVector<T> {
+    _first: *mut T,
+    _last: *mut T,
+    _end: *mut T,
+}
+
+#[repr(C)]
+pub struct GdSet<T> {
+    _head: *mut c_void,
+    _size: usize,
+    _marker: std::marker::PhantomData<T>,
+}
+
+#[repr(C)]
+pub struct GdMap<K, V> {
+    _head: *mut c_void,
+    _size: usize,
+    _marker: std::marker::PhantomData<(K, V)>,
+}
+
+#[repr(C)]
+pub struct GdUnorderedMap<K, V> {
+    #[cfg(target_os = "windows")]
+    _data: [usize; 8],
+    #[cfg(not(target_os = "windows"))]
+    _data: [usize; 4],
+    _marker: std::marker::PhantomData<(K, V)>,
+}
+
+#[repr(C)]
+pub struct GdUnorderedSet<T> {
+    #[cfg(target_os = "windows")]
+    _storage: [u64; 8],
+    #[cfg(not(target_os = "windows"))]
+    _storage: [usize; 4],
+    _marker: std::marker::PhantomData<T>,
+}
+"#,
+    );
 
     if use_cocos_bindgen {
         output.push_str("pub use super::cocos::*;\n");

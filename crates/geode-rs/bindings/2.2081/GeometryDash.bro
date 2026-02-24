@@ -5554,7 +5554,7 @@ class GameLevelManager : cocos2d::CCNode {
     void processOnDownloadLevelCompleted(gd::string response, gd::string tag, bool update) = win 0x152370, imac 0x544610, m1 0x496110, ios 0x9fd4c;
     void purgeUnusedLevels() = win 0x14a430, imac 0x5399b0, m1 0x48c690, ios 0x99fac;
     bool rateDemon(int id, int diff, bool moderator) = win 0x155350, imac 0x547950, m1 0x498ef8, ios 0xa18a8;
-    bool rateLevelAdmin(int id, int, int, int rank, bool, bool updateRank) = win inline, m1 0x4a3d9c, imac 0x553bd0, ios inline;
+    bool rateLevelAdmin(int id, int stars, int feature, int rank, bool coins, bool updateRank) = win inline, m1 0x4a3d9c, imac 0x553bd0, ios inline;
     void rateStars(int id, int diff) = win 0x153ac0, imac 0x545ec0, m1 0x4976a4, ios 0xa0b34;
     void readFriendRequest(int id) = win 0x161680, imac 0x555410, m1 0x4a5460, ios 0xa8fd0;
     void removeDelimiterChars(gd::string str, bool colon) = win 0x16a960, imac 0x53e6b0, m1 0x490b5c, ios 0x9cd44;
@@ -7502,7 +7502,7 @@ class GJBaseGameLayer : cocos2d::CCLayer, TriggerEffectDelegate {
     TeleportPortalObject* getPortalTarget(TeleportPortalObject* object) = win inline, imac 0x1211a0, m1 0xfa084, ios 0x1e4268;
     cocos2d::CCPoint getPortalTargetPos(TeleportPortalObject* object, GameObject* target, PlayerObject* player) = win inline, imac 0x1212b0, m1 0xfa1a0, ios 0x1e4318;
     gd::string getRecordExtra() = win inline, m1 0x127224, imac 0x157170, ios 0x2017d4;
-    gd::string getRecordString(bool) = win 0x23a2f0, imac 0x1572c0, m1 0x127374, ios 0x2018a4;
+    gd::string getRecordString(bool compress) = win 0x23a2f0, imac 0x1572c0, m1 0x127374, ios 0x2018a4;
     void getRotateCommandTargets(EnhancedTriggerObject* object, GameObject*& centerObject, GameObject*& targetObject, GameObject*& rotateObject) = win inline, imac 0x137fd0, m1 0x10d318, ios 0x1eece4;
     cocos2d::CCPoint getSavedPosition(int groupID, float delay) = win 0x2192a0, imac 0x12bbb0, m1 0x103b14, ios 0x1eb5a4;
     float getScaledGroundHeight(float height) = win inline, imac 0x12aa40, m1 0x102afc, ios inline;
@@ -7629,7 +7629,7 @@ class GJBaseGameLayer : cocos2d::CCLayer, TriggerEffectDelegate {
     void resetLevelVariables() = win 0x23b040, imac 0x159060, m1 0x128b88, ios 0x20220c;
     void resetMoveOptimizedValue() = win inline, imac 0x14a600, m1 0x11d030, ios 0x1fa7a0;
     void resetPlayer() = win 0x2120b0, imac 0x123490, m1 0xfc15c, ios 0x1e5d24;
-    void resetRecord(int, bool) = win 0x239e20, m1 0x126d7c, imac 0x156bb0, ios 0x2014b4;
+    void resetRecord(int steps, bool noFullReset) = win 0x239e20, m1 0x126d7c, imac 0x156bb0, ios 0x2014b4;
     void resetRecordFull() = win inline, m1 0x126cf0, imac 0x156af0, ios inline;
     void resetSongTriggerValues() = win inline, imac 0x14e9f0, m1 0x120928, ios inline;
     void resetSpawnChannelIndex() = win 0x245e20, imac 0x15a170, m1 0x1298a8, ios 0x202c1c;
@@ -8109,8 +8109,8 @@ class GJBaseGameLayer : cocos2d::CCLayer, TriggerEffectDelegate {
     cocos2d::CCDictionary* m_uiObjectLayers;
     cocos2d::CCNode* m_uiTriggerUI;
     double m_timePlayed;
-    int m_unk3568;
-    int m_unk356c;
+    int m_tickIndex;
+    int m_clickIndex;
     bool m_levelEndAnimationStarted;
     int m_points;
     gd::string m_pointsString;
@@ -8681,7 +8681,7 @@ class GJGameLevel : cocos2d::CCNode {
     void levelWasAltered() = win inline, imac 0x55b5f0, m1 0x4ab20c, ios 0xac63c;
     void levelWasSubmitted() = win inline, imac 0x53e880, m1 0x490d18, ios inline;
     void parseSettingsString(gd::string str) = win inline, imac 0x55b3c0, m1 0x4ab09c, ios inline;
-    void saveNewScore(int value, int type, int, int, int, gd::string, bool) = win 0x16d230, imac 0x55c330, m1 0x4abe54, ios 0xacdf0;
+    void saveNewScore(int value, int type, int ticks, int clicks, int coins, gd::string inputs, bool save) = win 0x16d230, imac 0x55c330, m1 0x4abe54, ios 0xacdf0;
     void savePercentage(int percent, bool isPracticeMode, int clicks, int attempts, bool isChkValid) = win 0x16c8b0, imac 0x55b7d0, m1 0x4ab368, ios 0xac744;
     void scoreStringToVector(gd::string& str, gd::vector<int>& vec) = win 0x16d680, imac 0x55c910, m1 0x4ac4a0, ios 0xad080;
     gd::string scoreVectorToString(gd::vector<int>& vec, int type) = win inline, imac 0x55cb80, m1 0x4ac6c4, ios 0xad2dc;
@@ -8812,14 +8812,14 @@ class GJGameLevel : cocos2d::CCNode {
     gd::string m_sfxIDs;
     int m_songSize;
     int m_bestTime;
-    int m_unk518;
-    int m_unk51c;
-    int m_unk520;
+    int m_ticksTime;
+    int m_clicksTime;
+    int m_coinsTime;
     gd::string m_inputsTime;
     int m_bestPoints;
-    int m_unk54c;
-    int m_unk550;
-    int m_unk554;
+    int m_ticksPoints;
+    int m_clicksPoints;
+    int m_coinsPoints;
     gd::string m_inputsPoints;
     int m_platformerSeed;
     gd::string m_localBestTimes;
@@ -9773,7 +9773,7 @@ class GJRateLevelLayer : SetupTriggerPopup, UploadPopupDelegate, UploadActionDel
     virtual void rateInfoFailed(int id, int response) = win 0x2f6cb0, m1 0x45f8c4, imac 0x507d50, ios 0x1b2abc;
     virtual void FLAlert_Clicked(FLAlertLayer* layer, bool btn2) = win 0x2f5750, m1 0x45e508, imac 0x5069e0, ios 0x1b1a78;
 
-    void createStatPillar(int, int, int, cocos2d::ccColor3B, cocos2d::ccColor3B, cocos2d::CCPoint, gd::string) = win 0x2f6540, m1 0x45f4c0, imac 0x507970, ios 0x1b26cc;
+    void createStatPillar(int width, int height, int count, cocos2d::ccColor3B innerColor, cocos2d::ccColor3B outerColor, cocos2d::CCPoint position, gd::string text) = win 0x2f6540, m1 0x45f4c0, imac 0x507970, ios 0x1b26cc;
     CCMenuItemSpriteExtra* getStarsButton(int stars, cocos2d::SEL_MenuHandler selector, cocos2d::CCMenu* menu, float scale) = win inline, m1 0x45dfd4, imac 0x506490, ios 0x1b1590;
     bool init(GJGameLevel* level) = win 0x2f4920, m1 0x45d2ec, imac 0x505ac0, ios 0x1b0d04;
     void onFeature(cocos2d::CCObject* sender) = win 0x2f5920, m1 0x45e210, imac 0x5066b0, ios 0x1b17bc;
@@ -11864,8 +11864,8 @@ class LevelEditorLayer : GJBaseGameLayer, LevelSettingsDelegate {
     void addToRedoList(UndoObject* object) = win inline, imac 0xe2b00, m1 0xc83ac, ios 0x35bc34;
     void addTouchPoint(cocos2d::CCPoint point) = win inline, imac 0xf1ca0, m1 0xd4c6c, ios inline;
     void addToUndoList(UndoObject* object, bool keepRedo) = win inline, imac 0xdfb60, m1 0xc5764, ios 0x359b30;
-    void addTriggersWithGroupID(gd::unordered_set<int>&, cocos2d::CCArray*, gd::unordered_map<int, int>&, int) = m1 0xd1b6c, imac 0xee240;
-    void addTriggersWithTargetGroupID(gd::unordered_set<int>&, gd::unordered_set<int>&, cocos2d::CCArray*, gd::unordered_map<int, int>&, int) = m1 0xd17f0, imac 0xedd00;
+    void addTriggersWithGroupID(gd::unordered_set<int>& sourceIDs, cocos2d::CCArray* triggers, gd::unordered_map<int, int>& remap, int objectID) = m1 0xd1b6c, imac 0xee240;
+    void addTriggersWithTargetGroupID(gd::unordered_set<int>& sourceIDs, gd::unordered_set<int>& targetIDs, cocos2d::CCArray* triggers, gd::unordered_map<int, int>& remap, int objectID) = m1 0xd17f0, imac 0xedd00;
     void applyAttributeState(GameObject* dest, GameObject* src) = win inline, imac 0xf3cf0, m1 0xd69f4, ios inline;
     void applyGroupState(GameObject* dest, GameObject* src) = win 0x2e13d0, imac 0xf3af0, m1 0xd67cc, ios 0x363af4;
     void breakApartTextObject(TextGameObject* object) = win 0x2df5b0, imac 0xf16c0, m1 0xd46f0, ios 0x3623fc;
@@ -19186,7 +19186,7 @@ class SongInfoObject : cocos2d::CCNode {
 
     static SongInfoObject* create(cocos2d::CCDictionary* dict) = win 0x3448b0, imac 0x58c1e0, m1 0x4d740c, ios 0x154920;
     static SongInfoObject* create(int songID) = win 0x344730, imac 0x596ea0, m1 0x4e0cc0, ios 0x15b164;
-    static SongInfoObject* create(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345bf0, imac 0x593d00, m1 0x4ddfe4, ios 0x158f48;
+    static SongInfoObject* create(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string unknown, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345bf0, imac 0x593d00, m1 0x4ddfe4, ios 0x158f48;
     static SongInfoObject* createWithCoder(DS_Dictionary* dict) = win 0x346250, imac 0x5974f0, m1 0x4e1260, ios 0x15b644;
 
     virtual void encodeWithCoder(DS_Dictionary* dict) = win 0x3465b0, imac 0x597d60, m1 0x4e1920, ios 0x15bb98;
@@ -19198,7 +19198,7 @@ class SongInfoObject : cocos2d::CCNode {
     gd::string getArtistNames(int unused) = win 0x3467b0, imac 0x597f70, m1 0x4e1ac8, ios 0x15bd40;
     int getExtraArtistCount() = win 0x346c00, m1 0x4e20a0, imac 0x598730, ios 0x15c0b4;
     gd::string getTagsString(bool shortTags) = win 0x346e60, imac 0x5988a0, m1 0x4e21ac, ios 0x15c100;
-    bool init(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345e60, imac 0x5970a0, m1 0x4e0e50, ios 0x15b378;
+    bool init(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string unknown, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345e60, imac 0x5970a0, m1 0x4e0e50, ios 0x15b378;
     void updateArtists(gd::string artists) = win inline, imac 0x597310, m1 0x4e1090, ios 0x15b510;
 
     int m_songID;

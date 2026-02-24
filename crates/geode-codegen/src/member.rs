@@ -1,12 +1,57 @@
-use broma_rs::{Field, FieldInner, MemberField, PadField};
+use broma_rs::{Field, FieldInner, MemberField, PadField, Platform as BromaPlatform};
 
+use crate::platform::Platform;
+use crate::to_snake_case;
 use crate::types::cpp_to_rust_type;
 
 pub fn generate_member_field(field: &MemberField) -> String {
     let rust_type = cpp_to_rust_type(&field.ty.name);
     let type_str = rust_type.to_rust_str();
     let name = sanitize_member_name(&field.name);
-    format!("    pub {}: {},", name, type_str)
+
+    let platforms = broma_platform_to_codegen(field.platform);
+
+    if platforms.is_empty() || field.platform == BromaPlatform::All {
+        format!("    pub {}: {},", name, type_str)
+    } else if platforms.len() == 1 {
+        format!(
+            "    #[cfg({})]\n    pub {}: {},",
+            platforms[0].cfg_condition(),
+            name,
+            type_str
+        )
+    } else {
+        let conditions: Vec<&str> = platforms.iter().map(|p| p.cfg_condition()).collect();
+        format!(
+            "    #[cfg(any({}))]\n    pub {}: {},",
+            conditions.join(", "),
+            name,
+            type_str
+        )
+    }
+}
+
+fn broma_platform_to_codegen(platform: BromaPlatform) -> Vec<Platform> {
+    let mut result = Vec::new();
+    if platform.contains(BromaPlatform::Windows) {
+        result.push(Platform::Windows);
+    }
+    if platform.contains(BromaPlatform::MacIntel) {
+        result.push(Platform::MacIntel);
+    }
+    if platform.contains(BromaPlatform::MacArm) {
+        result.push(Platform::MacArm);
+    }
+    if platform.contains(BromaPlatform::IOS) {
+        result.push(Platform::IOS);
+    }
+    if platform.contains(BromaPlatform::Android32) {
+        result.push(Platform::Android32);
+    }
+    if platform.contains(BromaPlatform::Android64) {
+        result.push(Platform::Android64);
+    }
+    result
 }
 
 pub fn generate_padding_field(pad: &PadField, index: usize) -> String {
@@ -70,13 +115,15 @@ pub fn sanitize_member_name(name: &str) -> String {
         "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield",
     ];
 
-    let mut result = if let Some(stripped) = name.strip_prefix("m_") {
-        stripped.to_string()
+    let name_without_prefix = if let Some(stripped) = name.strip_prefix("m_") {
+        stripped
     } else if let Some(stripped) = name.strip_prefix('_') {
-        format!("underscore_{}", stripped)
+        return format!("underscore_{}", to_snake_case(stripped));
     } else {
-        name.to_string()
+        name
     };
+
+    let mut result = to_snake_case(name_without_prefix);
 
     if result
         .chars()

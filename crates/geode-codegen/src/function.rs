@@ -63,7 +63,7 @@ fn generate_free_function(func: &Function, platform: Platform, generate_docs: bo
     let call_args: Vec<String> = args.iter().map(|(name, _)| name.clone()).collect();
 
     output.push_str(&format!(
-        "pub unsafe fn {}({}) -> {} {{\n",
+        "pub fn {}({}) -> {} {{\n",
         name,
         args.iter()
             .map(|(n, t)| format!("{}: {}", n, t))
@@ -74,10 +74,10 @@ fn generate_free_function(func: &Function, platform: Platform, generate_docs: bo
 
     output.push_str(&format!("    static ADDR: usize = {};\n", addr_hex));
     output.push_str(&format!(
-        "    let func: {} = std::mem::transmute(base::get() + ADDR);\n",
-        fn_type
+        "    unsafe {{\n        let func: {} = std::mem::transmute(base::get() + ADDR);\n        func({})\n    }}\n",
+        fn_type,
+        call_args.join(", ")
     ));
-    output.push_str(&format!("    func({})\n", call_args.join(", ")));
     output.push_str("}\n\n");
 
     output
@@ -100,11 +100,22 @@ pub fn generate_member_function(
     let name = sanitize_function_name(&func.prototype.name);
     let ret_type = cpp_to_rust_type(&func.prototype.ret.name);
 
-    let mut args: Vec<(String, String)> =
-        vec![("this".to_string(), format!("*mut {}", class_name))];
+    let is_static = func.prototype.is_static;
+
+    let mut fn_type_args: Vec<(String, String)> = Vec::new();
+    let mut ref_args: Vec<(String, String)> = Vec::new();
+
+    if !is_static {
+        fn_type_args.push(("this".to_string(), format!("*mut {}", class_name)));
+        ref_args.push(("this".to_string(), format!("&mut {}", class_name)));
+    }
+
     for arg in &func.prototype.args {
         let ty = cpp_to_rust_type(&arg.ty.name);
-        args.push((sanitize_arg_name(&arg.name), ty.to_rust_str()));
+        let arg_name = sanitize_arg_name(&arg.name);
+        let (ref_ty, fn_type_ty) = to_ref_types(&ty);
+        fn_type_args.push((arg_name.clone(), fn_type_ty));
+        ref_args.push((arg_name, ref_ty));
     }
 
     let addr = get_platform_address(&func.binds, platform);
@@ -128,29 +139,32 @@ pub fn generate_member_function(
     output.push_str(&generate_platform_addresses_const(&func_name, &func.binds));
     output.push('\n');
 
-    let convention = if func.prototype.is_static {
-        "extern \"C\""
-    } else {
-        match platform {
-            Platform::Windows => "extern \"C\"",
-            _ => "extern \"C\"",
-        }
-    };
+    let convention = "extern \"C\"";
 
-    let fn_type_args: Vec<String> = args.iter().map(|(_, ty)| ty.clone()).collect();
+    let fn_type_args_str: Vec<String> = fn_type_args.iter().map(|(_, ty)| ty.clone()).collect();
     let fn_type = format!(
         "{} fn({}) -> {}",
         convention,
-        fn_type_args.join(", "),
+        fn_type_args_str.join(", "),
         ret_type.to_rust_str()
     );
 
-    let call_args: Vec<String> = args.iter().map(|(n, _)| n.clone()).collect();
+    let mut call_args: Vec<String> = Vec::new();
+    for (n, ref_ty) in &ref_args {
+        if ref_ty.starts_with("&mut ") {
+            call_args.push(format!("{} as *mut _", n));
+        } else if ref_ty.starts_with("&") {
+            call_args.push(format!("{} as *const _", n));
+        } else {
+            call_args.push(n.clone());
+        }
+    }
 
     output.push_str(&format!(
-        "pub unsafe fn {}({}) -> {} {{\n",
+        "pub fn {}({}) -> {} {{\n",
         func_name,
-        args.iter()
+        ref_args
+            .iter()
             .map(|(n, t)| format!("{}: {}", n, t))
             .collect::<Vec<_>>()
             .join(", "),
@@ -158,15 +172,37 @@ pub fn generate_member_function(
     ));
 
     output.push_str(&format!(
-        "    let func: {} = std::mem::transmute(base::get() + {}{});\n",
+        "    unsafe {{\n        let func: {} = std::mem::transmute(base::get() + {}{});\n        func({})\n    }}\n",
         fn_type,
         if is_impl { "Self::" } else { "" },
-        addr_const_name
+        addr_const_name,
+        call_args.join(", ")
     ));
-    output.push_str(&format!("    func({})\n", call_args.join(", ")));
     output.push_str("}\n\n");
 
     output
+}
+
+fn to_ref_types(ty: &crate::types::RustType) -> (String, String) {
+    use crate::types::RustType;
+    match ty {
+        RustType::Pointer(inner, is_const) => {
+            let inner_str = inner.to_rust_str();
+            if *is_const {
+                (
+                    format!("*const {}", inner_str),
+                    format!("*const {}", inner_str),
+                )
+            } else {
+                if let RustType::KnownClass(_) = inner.as_ref() {
+                    (format!("&mut {}", inner_str), format!("*mut {}", inner_str))
+                } else {
+                    (format!("*mut {}", inner_str), format!("*mut {}", inner_str))
+                }
+            }
+        }
+        _ => (ty.to_rust_str(), ty.to_rust_str()),
+    }
 }
 
 pub fn generate_platform_addresses_const(func_name: &str, binds: &PlatformNumber) -> String {

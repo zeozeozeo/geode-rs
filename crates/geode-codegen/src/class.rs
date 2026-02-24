@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use broma_rs::{Class, FieldInner, FunctionType};
+use broma_rs::{Class, FieldInner, FunctionType, Root};
 
 use crate::function::generate_member_function;
 use crate::member::generate_field;
@@ -8,6 +8,7 @@ use crate::platform::Platform;
 
 pub fn generate_class(
     class: &Class,
+    root: &Root,
     platform: Platform,
     generate_docs: bool,
     generate_prelude: bool,
@@ -30,12 +31,37 @@ pub fn generate_class(
         output.push_str(&format!("/// {}\n", class.attributes.docs));
     }
 
-    let class_name = extract_class_name(&class.name);
+    let class_name = serialize_name(&class.name);
     output.push_str("#[repr(C)]\n");
     output.push_str(&format!("pub struct {} {{\n", class_name));
 
-    if !class.superclasses.is_empty() {
-        output.push_str("    pub _base: [u8; 0],\n");
+    if let Some(primary_base) = class.superclasses.first() {
+        if let Some(base_class) = root.find_class(primary_base) {
+            let base_name = serialize_name(&base_class.name);
+            output.push_str(&format!("    pub base: {},\n", base_name));
+        } else {
+            let base_name = serialize_name(primary_base);
+            output.push_str(&format!("    pub base: {},\n", base_name));
+        }
+    }
+
+    for secondary_base in class.superclasses.iter().skip(1) {
+        if let Some(base_class) = root.find_class(secondary_base) {
+            if class_has_virtual_functions(base_class) {
+                let base_name = serialize_name(secondary_base).to_string();
+                output.push_str(&format!("    pub _vt_{}: *mut c_void,\n", base_name));
+            } else {
+                let base_name = serialize_name(&base_class.name);
+                output.push_str(&format!(
+                    "    pub base_{}: {},\n",
+                    base_name.to_lowercase(),
+                    base_name
+                ));
+            }
+        } else {
+            let base_name = serialize_name(secondary_base).to_string();
+            output.push_str(&format!("    pub _vt_{}: *mut c_void,\n", base_name));
+        }
     }
 
     let mut pad_index = 0;
@@ -58,7 +84,7 @@ pub fn generate_class(
 
 fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -> String {
     let mut output = String::new();
-    let class_name = extract_class_name(&class.name);
+    let class_name = serialize_name(&class.name);
 
     output.push_str(&format!("impl {} {{\n", class_name));
 
@@ -113,7 +139,7 @@ fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -
 
 fn generate_ctors_and_dtor(class: &Class, platform: Platform, generate_docs: bool) -> String {
     let mut output = String::new();
-    let class_name = extract_class_name(&class.name);
+    let class_name = serialize_name(&class.name);
 
     let mut has_ctor = false;
     let mut ctor_count = 0;
@@ -223,10 +249,20 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
-pub fn extract_class_name(full_name: &str) -> &str {
+pub fn serialize_name(full_name: &str) -> &str {
     if let Some(pos) = full_name.rfind("::") {
         &full_name[pos + 2..]
     } else {
         full_name
     }
+}
+
+fn class_has_virtual_functions(class: &Class) -> bool {
+    class.fields.iter().any(|f| {
+        if let Some(func) = f.as_function_bind() {
+            func.prototype.is_virtual
+        } else {
+            false
+        }
+    })
 }

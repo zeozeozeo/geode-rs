@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{FnArg, Ident, Item, ItemImpl, ItemStruct, Result};
+use syn::{FnArg, Ident, Item, ItemImpl, ItemStruct, Result, Type, TypeReference};
 
 pub fn expand_modify(class_name: Ident, item: TokenStream2) -> Result<TokenStream2> {
     let parsed: Item = syn::parse2(item.clone())?;
@@ -101,13 +101,13 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
 
             let detour_func = if has_self_param {
                 quote! {
-                    pub unsafe extern "C" fn #detour_func_name(#detour_params) #output {
+                    pub extern "C" fn #detour_func_name(#detour_params) #output {
                         #struct_name::#method_name(#call_args)
                     }
                 }
             } else {
                 quote! {
-                    pub unsafe extern "C" fn #detour_func_name(#detour_params) #output {
+                    pub extern "C" fn #detour_func_name(#detour_params) #output {
                         #block
                     }
                 }
@@ -156,33 +156,84 @@ fn build_detour_params_and_call_args(
     let mut detour_params: Vec<TokenStream2> = Vec::new();
     let mut call_args: Vec<TokenStream2> = Vec::new();
 
+    detour_params.push(quote!(this: *mut geode_rs::classes::#class_name));
+
     if has_self_param {
-        detour_params.push(quote!(this: *mut geode_rs::classes::#class_name));
         call_args.push(quote!(#struct_name::get_or_default(this)));
-        call_args.push(quote!(this));
     }
 
+    let mut found_this = false;
     for arg in inputs.iter() {
         if let FnArg::Typed(pat_type) = arg {
             let pat = &pat_type.pat;
             let ty = &pat_type.ty;
 
-            if has_self_param
-                && let syn::Pat::Ident(pat_ident) = &*pat_type.pat
+            if let syn::Pat::Ident(pat_ident) = &*pat_type.pat
                 && pat_ident.ident == "this"
             {
+                found_this = true;
+                if is_mut_ref_type(ty) {
+                    call_args.push(quote!(unsafe { &mut *this }));
+                } else if is_const_ref_type(ty) {
+                    call_args.push(quote!(unsafe { &*this }));
+                } else {
+                    call_args.push(quote!(this));
+                }
                 continue;
             }
 
-            detour_params.push(quote!(#pat: #ty));
-            call_args.push(quote!(#pat));
+            if is_mut_ref_type(ty) {
+                let inner_ty = extract_ref_inner_type(ty);
+                detour_params.push(quote!(#pat: *mut #inner_ty));
+                call_args.push(quote!(unsafe { &mut *#pat }));
+            } else if is_const_ref_type(ty) {
+                let inner_ty = extract_ref_inner_type(ty);
+                detour_params.push(quote!(#pat: *const #inner_ty));
+                call_args.push(quote!(unsafe { &*#pat }));
+            } else {
+                detour_params.push(quote!(#pat: #ty));
+                call_args.push(quote!(#pat));
+            }
         }
+    }
+
+    if !found_this {
+        call_args.push(quote!(this));
     }
 
     let detour_params_stream = quote!(#(#detour_params),*);
     let call_args_stream = quote!(#(#call_args),*);
 
     (detour_params_stream, call_args_stream)
+}
+
+fn is_mut_ref_type(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        mutability: Some(_),
+        ..
+    }) = ty
+    {
+        return true;
+    }
+    false
+}
+
+fn is_const_ref_type(ty: &Type) -> bool {
+    if let Type::Reference(TypeReference {
+        mutability: None, ..
+    }) = ty
+    {
+        return true;
+    }
+    false
+}
+
+fn extract_ref_inner_type(ty: &Type) -> &Type {
+    if let Type::Reference(TypeReference { elem, .. }) = ty {
+        elem
+    } else {
+        ty
+    }
 }
 
 fn to_snake_case(s: &str) -> String {

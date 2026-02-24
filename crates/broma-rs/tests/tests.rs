@@ -301,3 +301,54 @@ fn test_platform_number_inline() {
     assert!(bind.binds.ios == -2 || bind.binds.ios == -1);
     assert!(!bind.inner.is_empty());
 }
+
+#[test]
+fn test_pad_fields() {
+    let result = parse_file(Path::new("testdata/class.bro")).expect("failed to parse class.bro");
+    let test_class = result.find_class("Test").expect("Test class not found");
+
+    let pad_fields: Vec<_> = test_class
+        .fields
+        .iter()
+        .filter_map(|f| f.as_pad())
+        .collect();
+
+    assert!(!pad_fields.is_empty(), "should have at least one PAD field");
+}
+
+#[test]
+fn test_platform_block_member() {
+    let result = parse_file(Path::new("testdata/GeometryDash.bro"))
+        .expect("failed to parse GeometryDash.bro");
+
+    let gj_base_game_layer = result
+        .find_class("GJBaseGameLayer")
+        .expect("GJBaseGameLayer not found");
+
+    let allowed_buttons = gj_base_game_layer
+        .find_field("m_allowedButtons")
+        .expect("m_allowedButtons not found");
+
+    let member = allowed_buttons
+        .as_member()
+        .expect("m_allowedButtons should be a member field");
+
+    eprintln!(
+        "m_allowedButtons platform: {:?}, bits: {}",
+        member.platform,
+        member.platform.bits()
+    );
+
+    assert!(
+        member.platform.contains(Platform::IOS),
+        "m_allowedButtons should be on iOS"
+    );
+    assert!(
+        member.platform.contains(Platform::Android),
+        "m_allowedButtons should be on Android"
+    );
+    assert!(
+        !member.platform.contains(Platform::Windows),
+        "m_allowedButtons should NOT be on Windows"
+    );
+}

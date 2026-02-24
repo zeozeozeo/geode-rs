@@ -164,7 +164,15 @@ fn parse_platform_expr(
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
-            Rule::platform => {
+            Rule::platform
+            | Rule::kw_win
+            | Rule::kw_mac
+            | Rule::kw_ios
+            | Rule::kw_android
+            | Rule::kw_android32
+            | Rule::kw_android64
+            | Rule::kw_imac
+            | Rule::kw_m1 => {
                 platform |= str_to_platform(inner.as_str());
             }
             Rule::field => {
@@ -249,7 +257,7 @@ fn parse_pad_expr(pair: pest::iterators::Pair<Rule>, scratch: &mut ScratchData) 
                 }
             }
             Rule::bind => {
-                parse_bind_values(&inner, scratch)?;
+                parse_bind(&inner, scratch)?;
             }
             _ => {}
         }
@@ -540,15 +548,6 @@ fn parse_bind_platform(
     Ok(())
 }
 
-fn parse_bind_values(pair: &pest::iterators::Pair<Rule>, scratch: &mut ScratchData) -> Result<()> {
-    for inner in pair.clone().into_inner() {
-        if inner.as_rule() == Rule::bind_platform {
-            parse_bind_platform(&inner, scratch)?;
-        }
-    }
-    Ok(())
-}
-
 fn parse_function(
     pair: pest::iterators::Pair<Rule>,
     scratch: &mut ScratchData,
@@ -712,21 +711,31 @@ fn parse_type_content(s: &str) -> Type {
         }
     }
 
-    let ptr_chars: String = s.chars().filter(|&c| c == '*' || c == '&').collect();
+    let ptr_chars = extract_trailing_ptr_chars(s);
 
     let mut name = name_parts.join(" ");
     if !ptr_chars.is_empty() {
         name.push(' ');
-        for c in ptr_chars.chars() {
-            if c == '*' {
-                name.push('*');
-            } else if c == '&' {
-                name.push('&');
-            }
-        }
+        name.push_str(&ptr_chars);
     }
 
     result.name = name.trim().to_string();
+    result
+}
+
+fn extract_trailing_ptr_chars(s: &str) -> String {
+    let mut result = String::new();
+    let mut depth = 0i32;
+
+    for c in s.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            '*' | '&' if depth == 0 => result.push(c),
+            _ => {}
+        }
+    }
+
     result
 }
 
