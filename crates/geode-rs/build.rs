@@ -136,8 +136,10 @@ struct CocosCallbacks;
 
 #[cfg(feature = "bindgen")]
 impl bindgen::callbacks::ParseCallbacks for CocosCallbacks {
-    fn item_name(&self, name: &str) -> Option<String> {
-        name.strip_prefix("cocos2d_").map(|rest| rest.to_string())
+    fn item_name(&self, item: bindgen::callbacks::ItemInfo<'_>) -> Option<String> {
+        item.name
+            .strip_prefix("cocos2d_")
+            .map(|rest| rest.to_string())
     }
 }
 
