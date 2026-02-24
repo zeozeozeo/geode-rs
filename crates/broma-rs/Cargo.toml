@@ -8,4 +8,4 @@ exclude = ["testdata/"]
 bitflags = "2.11.0"
 pest = "2.8.6"
 pest_derive = "2.8.6"
-thiserror = "2.0.18"
+thiserror = "2.0"

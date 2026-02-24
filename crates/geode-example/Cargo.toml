@@ -8,5 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 geode-rs = { path = "../geode-rs" }
-log = "0.4.29"
+log = "0.4"
 simple_logger = "5.2.0"
