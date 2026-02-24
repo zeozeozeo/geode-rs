@@ -13,4 +13,6 @@ pub use tulip::*;
 
 pub use geode_macros::{geode_main, modify};
 
+pub use ctor;
+
 include!(concat!(env!("OUT_DIR"), "/geode_generated/mod.rs"));

@@ -30,15 +30,15 @@ fn expand_modify_struct(class_name: Ident, struct_item: ItemStruct) -> Result<To
         #struct_item
 
         #[allow(non_upper_case_globals)]
-        static #storage_ident: geode_rs::modify::ModifyStorage<#struct_name> =
-            geode_rs::modify::ModifyStorage::new();
+        static #storage_ident: ::geode_rs::modify::ModifyStorage<#struct_name> =
+            ::geode_rs::modify::ModifyStorage::new();
 
         impl #struct_name {
-            pub fn get(this: *mut geode_rs::classes::#class_name) -> Option<&'static mut Self> {
+            pub fn get(this: *mut ::geode_rs::classes::#class_name) -> Option<&'static mut Self> {
                 #storage_ident.get(this as usize)
             }
 
-            pub fn get_or_default(this: *mut geode_rs::classes::#class_name) -> &'static mut Self {
+            pub fn get_or_default(this: *mut ::geode_rs::classes::#class_name) -> &'static mut Self {
                 #storage_ident.get_or_default(this as usize, || Self {
                     #(#field_names: Default::default()),*
                 })
@@ -79,7 +79,7 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
 
             let addr_const = format_ident!("{}_ADDR", method_name_str.to_uppercase());
 
-            let convention = quote!(geode_rs::CallingConvention::Default);
+            let convention = quote!(::geode_rs::CallingConvention::Default);
 
             let detour_func_name = format_ident!(
                 "__detour_{}_{}",
@@ -118,9 +118,9 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
             let class_name_inner = class_name.clone();
             let hook_registration = quote! {
                 unsafe {
-                    let addr = geode_rs::classes::#class_name_inner::#addr_const;
-                    let detour = #detour_func_name as *mut std::ffi::c_void;
-                    let _ = geode_rs::modify::register_hook(addr, detour, #hook_name, #convention);
+                    let addr = ::geode_rs::classes::#class_name_inner::#addr_const;
+                    let detour = #detour_func_name as *mut ::std::ffi::c_void;
+                    let _ = ::geode_rs::modify::register_hook(addr, detour, #hook_name, #convention);
                 }
             };
             hook_registrations.push(hook_registration);
@@ -138,8 +138,8 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
         #(#detour_functions)*
 
         #[used]
-        #[unsafe(link_section = ".CRT$XCU")]
-        static #hooks_static_name: fn() = || {
+        #[::geode_rs::ctor::ctor(crate_path = ::geode_rs::ctor)]
+        static #hooks_static_name: () = {
             #(#hook_registrations)*
         };
     };
@@ -156,7 +156,7 @@ fn build_detour_params_and_call_args(
     let mut detour_params: Vec<TokenStream2> = Vec::new();
     let mut call_args: Vec<TokenStream2> = Vec::new();
 
-    detour_params.push(quote!(this: *mut geode_rs::classes::#class_name));
+    detour_params.push(quote!(this: *mut ::geode_rs::classes::#class_name));
 
     if has_self_param {
         call_args.push(quote!(#struct_name::get_or_default(this)));

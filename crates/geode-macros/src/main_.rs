@@ -11,8 +11,8 @@ pub fn expand_geode_main(input: TokenStream2) -> Result<TokenStream2> {
     let expanded = quote! {
         #[unsafe(no_mangle)]
         pub extern "C" fn geodeImplicitEntry() {
-            geode_rs::internal::init_mod();
-            geode_rs::modify::flush_pending_hooks();
+            ::geode_rs::internal::init_mod();
+            ::geode_rs::modify::flush_pending_hooks();
             #fn_name();
         }
 

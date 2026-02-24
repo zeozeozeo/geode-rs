@@ -9,6 +9,7 @@ default = ["bindgen"]
 bindgen = ["dep:bindgen"]
 
 [dependencies]
+ctor = { version = "0.6.3", default-features = false, features = ["proc_macro", "__no_warn_on_missing_unsafe"] }
 geode-macros = { path = "../geode-macros" }
 
 [target.'cfg(windows)'.dependencies]
