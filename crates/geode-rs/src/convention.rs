@@ -1,6 +1,5 @@
 #[repr(i32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum CallingConvention {
     #[default]
     Default = 0,
@@ -11,7 +10,6 @@ pub enum CallingConvention {
     Membercall = 5,
     Stdcall = 6,
 }
-
 
 impl CallingConvention {
     pub fn for_member_function(is_static: bool) -> Self {

@@ -79,11 +79,7 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
 
             let addr_const = format_ident!("{}_ADDR", method_name_str.to_uppercase());
 
-            let convention = if has_self_param {
-                quote!(geode_rs::CallingConvention::Thiscall)
-            } else {
-                quote!(geode_rs::CallingConvention::Default)
-            };
+            let convention = quote!(geode_rs::CallingConvention::Default);
 
             let detour_func_name = format_ident!(
                 "__detour_{}_{}",
@@ -173,9 +169,10 @@ fn build_detour_params_and_call_args(
 
             if has_self_param
                 && let syn::Pat::Ident(pat_ident) = &*pat_type.pat
-                    && pat_ident.ident == "this" {
-                        continue;
-                    }
+                && pat_ident.ident == "this"
+            {
+                continue;
+            }
 
             detour_params.push(quote!(#pat: #ty));
             call_args.push(quote!(#pat));
