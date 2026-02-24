@@ -96,13 +96,6 @@ lazy_static::lazy_static! {
     };
 }
 
-pub fn register_class(name: &str) {
-    let class_name = extract_class_name(name).to_string();
-    KNOWN_CLASSES.with(|classes| {
-        classes.borrow_mut().insert(class_name);
-    });
-}
-
 pub fn register_classes(classes: &[String]) {
     KNOWN_CLASSES.with(|known| {
         let mut set = known.borrow_mut();
@@ -118,14 +111,6 @@ fn is_known_class(name: &str) -> bool {
 
 fn is_cocos_type(name: &str) -> bool {
     COCOS_TYPES.contains(name)
-}
-
-fn extract_class_name(full_name: &str) -> &str {
-    if let Some(pos) = full_name.rfind("::") {
-        &full_name[pos + 2..]
-    } else {
-        full_name
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,17 +253,6 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
     }
 
     RustType::Unknown(cpp_type.to_string())
-}
-
-pub fn sanitize_type_name(cpp_type: &str) -> String {
-    let mut result = String::new();
-    for c in cpp_type.chars() {
-        match c {
-            ':' | '<' | '>' | ',' | ' ' => result.push('_'),
-            _ => result.push(c),
-        }
-    }
-    result
 }
 
 pub fn generate_types_mod(use_cocos_bindgen: bool) -> String {

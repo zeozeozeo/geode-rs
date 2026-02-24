@@ -223,14 +223,10 @@ fn to_snake_case(s: &str) -> String {
     result
 }
 
-fn extract_class_name(full_name: &str) -> &str {
+pub fn extract_class_name(full_name: &str) -> &str {
     if let Some(pos) = full_name.rfind("::") {
         &full_name[pos + 2..]
     } else {
         full_name
     }
-}
-
-pub fn sanitize_class_name(name: &str) -> String {
-    extract_class_name(name).to_string()
 }

@@ -267,15 +267,6 @@ fn sanitize_arg_name(name: &str) -> String {
     result
 }
 
-pub fn generate_overload_suffix(args: &[broma_rs::Arg]) -> String {
-    if args.is_empty() {
-        String::new()
-    } else {
-        let arg_count = args.len();
-        format!("_{}", arg_count)
-    }
-}
-
 fn to_snake_case(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

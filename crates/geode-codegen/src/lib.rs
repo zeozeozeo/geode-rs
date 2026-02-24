@@ -63,7 +63,10 @@ pub fn generate(config: Config) -> Result<()> {
             let output = class::generate_class(class, platform, config.generate_docs, true, true);
             let file_path = classes_dir.join(format!("{module_name}.rs"));
             std::fs::write(&file_path, output)?;
-            class_modules.push((module_name, class::sanitize_class_name(&class.name)));
+            class_modules.push((
+                module_name,
+                class::extract_class_name(&class.name).to_string(),
+            ));
         }
 
         let classes_mod = generate_classes_mod(&class_modules);
