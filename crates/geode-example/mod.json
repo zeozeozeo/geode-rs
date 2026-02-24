@@ -1,0 +1,11 @@
+{
+  "geode": "5.0.0",
+  "gd": {
+    "win": "*"
+  },
+  "id": "test.example_mod",
+  "version": "1.0.0",
+  "name": "Example Mod",
+  "developer": "Test Developer",
+  "description": "An example mod written in Rust"
+}

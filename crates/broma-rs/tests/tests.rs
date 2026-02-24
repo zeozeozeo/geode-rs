@@ -4,32 +4,33 @@ use std::path::Path;
 
 #[test]
 fn test_parse_class_bro() {
-    let result = parse_file(Path::new("tests/class.bro")).expect("failed to parse class.bro");
+    let result = parse_file(Path::new("testdata/class.bro")).expect("failed to parse class.bro");
     assert!(!result.classes.is_empty());
 }
 
 #[test]
 fn test_parse_free_bro() {
-    let result = parse_file(Path::new("tests/free.bro")).expect("failed to parse free.bro");
+    let result = parse_file(Path::new("testdata/free.bro")).expect("failed to parse free.bro");
     assert!(!result.functions.is_empty());
 }
 
 #[test]
 fn test_parse_cocos2d() {
-    let result = parse_file(Path::new("tests/Cocos2d.bro")).expect("failed to parse Cocos2d.bro");
+    let result =
+        parse_file(Path::new("testdata/Cocos2d.bro")).expect("failed to parse Cocos2d.bro");
     assert!(!result.classes.is_empty());
 }
 
 #[test]
 fn test_parse_geometrydash() {
-    let result =
-        parse_file(Path::new("tests/GeometryDash.bro")).expect("failed to parse GeometryDash.bro");
+    let result = parse_file(Path::new("testdata/GeometryDash.bro"))
+        .expect("failed to parse GeometryDash.bro");
     assert!(!result.classes.is_empty());
 }
 
 #[test]
 fn test_parse_entry() {
-    let result = parse_file(Path::new("tests/Entry.bro")).expect("failed to parse Entry.bro");
+    let result = parse_file(Path::new("testdata/Entry.bro")).expect("failed to parse Entry.bro");
     assert_eq!(result.headers.len(), 5);
     let names: Vec<&str> = result.headers.iter().map(|h| h.name.as_str()).collect();
     assert!(names.contains(&"Cocos2d.bro"), "headers: {:?}", names);
@@ -37,25 +38,26 @@ fn test_parse_entry() {
 
 #[test]
 fn test_parse_extras() {
-    let result = parse_file(Path::new("tests/Extras.bro")).expect("failed to parse Extras.bro");
+    let result = parse_file(Path::new("testdata/Extras.bro")).expect("failed to parse Extras.bro");
     assert!(!result.classes.is_empty());
 }
 
 #[test]
 fn test_parse_fmod() {
-    let result = parse_file(Path::new("tests/FMOD.bro")).expect("failed to parse FMOD.bro");
+    let result = parse_file(Path::new("testdata/FMOD.bro")).expect("failed to parse FMOD.bro");
     assert!(!result.classes.is_empty());
 }
 
 #[test]
 fn test_parse_kazmath() {
-    let result = parse_file(Path::new("tests/Kazmath.bro")).expect("failed to parse Kazmath.bro");
+    let result =
+        parse_file(Path::new("testdata/Kazmath.bro")).expect("failed to parse Kazmath.bro");
     assert!(!result.functions.is_empty() || !result.classes.is_empty());
 }
 
 #[test]
 fn test_class_bro_contents() {
-    let result = parse_file(Path::new("tests/class.bro")).expect("failed to parse class.bro");
+    let result = parse_file(Path::new("testdata/class.bro")).expect("failed to parse class.bro");
     let test_class = result.find_class("Test").expect("Test class not found");
 
     assert_eq!(test_class.name, "Test");
@@ -129,7 +131,7 @@ fn test_class_bro_contents() {
 
 #[test]
 fn test_free_bro_contents() {
-    let result = parse_file(Path::new("tests/free.bro")).expect("failed to parse free.bro");
+    let result = parse_file(Path::new("testdata/free.bro")).expect("failed to parse free.bro");
 
     assert_eq!(result.functions.len(), 3);
 
@@ -166,7 +168,8 @@ fn test_free_bro_contents() {
 
 #[test]
 fn test_cocos2d_contents() {
-    let result = parse_file(Path::new("tests/Cocos2d.bro")).expect("failed to parse Cocos2d.bro");
+    let result =
+        parse_file(Path::new("testdata/Cocos2d.bro")).expect("failed to parse Cocos2d.bro");
 
     let cccontent = result
         .find_class("CCContentManager")
@@ -225,8 +228,8 @@ fn test_cocos2d_contents() {
 
 #[test]
 fn test_geometrydash_contents() {
-    let result =
-        parse_file(Path::new("tests/GeometryDash.bro")).expect("failed to parse GeometryDash.bro");
+    let result = parse_file(Path::new("testdata/GeometryDash.bro"))
+        .expect("failed to parse GeometryDash.bro");
 
     let account_help = result
         .find_class("AccountHelpLayer")
@@ -261,7 +264,7 @@ fn test_geometrydash_contents() {
 
 #[test]
 fn test_extras_contents() {
-    let result = parse_file(Path::new("tests/Extras.bro")).expect("failed to parse Extras.bro");
+    let result = parse_file(Path::new("testdata/Extras.bro")).expect("failed to parse Extras.bro");
 
     let fmod_sound = result.find_class("FMODSound").expect("FMODSound not found");
     let sound_member = fmod_sound.find_field("m_sound").expect("m_sound not found");
@@ -283,7 +286,7 @@ fn test_extras_contents() {
 
 #[test]
 fn test_platform_number_inline() {
-    let result = parse_file(Path::new("tests/class.bro")).expect("failed to parse class.bro");
+    let result = parse_file(Path::new("testdata/class.bro")).expect("failed to parse class.bro");
     let test_class = result.find_class("Test").expect("Test class not found");
 
     let normal_inline = test_class
