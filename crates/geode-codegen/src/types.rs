@@ -373,10 +373,7 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
             }
         }
 
-        match name {
-            "string" => return RustType::KnownClass("GdString".to_string()),
-            _ => {}
-        }
+        if name == "string" { return RustType::KnownClass("GdString".to_string()) }
     }
 
     if type_str.starts_with("std::") {
