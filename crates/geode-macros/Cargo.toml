@@ -1,5 +1,8 @@
 [package]
 name = "geode-macros"
+description = "Proc macros for geode-rs"
+license = "Unlicense"
+repository = "https://github.com/zeozeozeo/geode-rs"
 version = "0.1.0"
 edition = "2024"
 

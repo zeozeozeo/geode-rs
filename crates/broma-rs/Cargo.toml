@@ -1,5 +1,8 @@
 [package]
 name = "broma-rs"
+description = "Broma language parser implementation in Rust (based on Geode fork)"
+license = "Unlicense"
+repository = "https://github.com/zeozeozeo/geode-rs"
 version = "0.1.0"
 edition = "2024"
 exclude = ["testdata/"]

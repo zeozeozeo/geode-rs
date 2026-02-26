@@ -1,5 +1,8 @@
 [package]
 name = "geode-codegen"
+description = "Geode codegen based on Broma bindings (for geode-rs)"
+license = "Unlicense"
+repository = "https://github.com/zeozeozeo/geode-rs"
 version = "0.1.0"
 edition = "2024"
 
