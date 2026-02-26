@@ -216,7 +216,7 @@ mod android {
                 dlopen(
                     b"libcocos2dcpp.so\0".as_ptr() as *const std::os::raw::c_char,
                     RTLD_LAZY | RTLD_NOLOAD,
-                )
+                ) as usize
             }
         });
         handle as *mut std::os::raw::c_void

@@ -108,6 +108,12 @@ impl Default for string {
     }
 }
 
+impl string {
+    pub fn as_raw_bytes(&self) -> &[u8; 24] {
+        unsafe { &*(self as *const string as *const [u8; 24]) }
+    }
+}
+
 impl Drop for string {
     fn drop(&mut self) {
         if self.is_long() {

@@ -8,13 +8,12 @@ An effort to port the Geode client mod API to Rust (WIP).
 - [stl-core](./crates/stl-core) - partial implementations of the 3 major C++ stdlibs (libcxx, msvc, gnustl)
 - [geode-codegen](./crates/geode-codegen) - converts Broma definitions to Rust types (similar to Geode's codegen).
 - [geode-macros](./crates/geode-macros) - proc macro implementations for geode-rs
-- [geode-rs](./crates/geode-rs) - bindings for Cocos, the Geode loader API and Tulip
+- [geode-rs](./crates/geode-rs) - bindings for Cocos, FMOD, the Geode loader API and Tulip
 - [geode-example](./crates/geode-example) - example of a Rust Geode mod, hooking regular functions and constructors, storing own data in modified classes, logging, building for android32/android64
 
 ## TODO
 
 - Proper cocos bindings (something better than bindgen)
 - Inherit cocos classes?
-- FMOD bindgen
 - android32 (untested, compiles), iOS, MacOS
 - Automatically generate loader bindings? (long shot)

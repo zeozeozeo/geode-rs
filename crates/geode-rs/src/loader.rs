@@ -382,100 +382,15 @@ pub(crate) mod geode_ffi {
         pub ctrl: *mut c_void,
     }
 
-    #[repr(C)]
-    pub struct AndroidAbstractType {
-        pub m_size: usize,
-        pub m_kind: u8,
-        pub _pad: [u8; 7],
-    }
-
-    #[repr(C)]
-    pub struct AndroidVector {
-        pub begin: *mut c_void,
-        pub end: *mut c_void,
-        pub cap: *mut c_void,
-    }
-
-    #[repr(C)]
-    pub struct AndroidAbstractFunction {
-        pub m_return: AndroidAbstractType,
-        pub m_parameters: AndroidVector,
-    }
-
-    #[repr(C)]
-    pub struct AndroidHandlerMetadata {
-        pub convention_ptr: *mut c_void,
-        pub convention_ctrl: *mut c_void,
-        pub m_abstract: AndroidAbstractFunction,
-    }
-
-    impl AndroidHandlerMetadata {
-        pub fn new(conv_ptr: *mut c_void, conv_ctrl: *mut c_void) -> Self {
-            Self {
-                convention_ptr: conv_ptr,
-                convention_ctrl: conv_ctrl,
-                m_abstract: AndroidAbstractFunction {
-                    m_return: AndroidAbstractType {
-                        m_size: 1,
-                        m_kind: 0,
-                        _pad: [0u8; 7],
-                    },
-                    m_parameters: AndroidVector {
-                        begin: std::ptr::null_mut(),
-                        end: std::ptr::null_mut(),
-                        cap: std::ptr::null_mut(),
-                    },
-                },
-            }
-        }
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    pub struct AndroidHookMetadata {
-        pub priority: i32,
-    }
-
-    fn build_libcxx_string(name: &str) -> Option<([u8; 24], Option<*mut u8>)> {
-        let bytes = name.as_bytes();
-        let len = bytes.len();
-        let mut str_buf = [0u8; 24];
-        let mut heap: Option<*mut u8> = None;
-
-        if len <= 22 {
-            str_buf[0] = (len as u8) << 1;
-            str_buf[1..1 + len].copy_from_slice(bytes);
-        } else {
-            unsafe extern "C" {
-                fn malloc(size: usize) -> *mut c_void;
-            }
-            let ptr = unsafe { malloc(len + 1) } as *mut u8;
-            if ptr.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len);
-                *ptr.add(len) = 0;
-            }
-            let str_ptr = str_buf.as_mut_ptr();
-            unsafe {
-                (str_ptr as *mut usize).write(len | 1);
-                (str_ptr.add(8) as *mut usize).write(len);
-                (str_ptr.add(16) as *mut *mut u8).write(ptr);
-            }
-            heap = Some(ptr);
-        }
-        Some((str_buf, heap))
-    }
-
     pub unsafe fn call_hook_create(
         address: *mut c_void,
         detour: *mut c_void,
         name: &str,
-        handler_meta: AndroidHandlerMetadata,
-        hook_meta: AndroidHookMetadata,
+        handler_meta: crate::tulip::HandlerMetadata,
+        hook_meta: crate::tulip::HookMetadata,
     ) -> Option<HookSharedPtr> {
-        let (str_buf, heap_ptr) = build_libcxx_string(name)?;
+        use crate::stl::StlString;
+        let str_obj = StlString::from(name);
         let loader = init_loader()?;
 
         #[repr(C)]
@@ -491,9 +406,9 @@ pub(crate) mod geode_ffi {
             fn_ptr = in(reg) loader.hook_create,
             in("x0") address,
             in("x1") detour,
-            in("x2") &str_buf as *const [u8; 24],
-            in("x3") &handler_meta as *const AndroidHandlerMetadata,
-            in("x4") hook_meta.priority,
+            in("x2") str_obj.as_raw_bytes() as *const [u8; 24],
+            in("x3") &handler_meta as *const crate::tulip::HandlerMetadata,
+            in("x4") hook_meta.m_priority,
             in("x8") &mut result as *mut HookSharedPtrBuf,
             clobber_abi("C"),
         );
@@ -504,25 +419,18 @@ pub(crate) mod geode_ffi {
                 *mut c_void,
                 *mut c_void,
                 *const [u8; 24],
-                *const AndroidHandlerMetadata,
-                AndroidHookMetadata,
+                *const crate::tulip::HandlerMetadata,
+                crate::tulip::HookMetadata,
             );
             let func: HookCreateFn = std::mem::transmute(loader.hook_create);
             func(
                 &mut result,
                 address,
                 detour,
-                &str_buf,
+                str_obj.as_raw_bytes(),
                 &handler_meta,
                 hook_meta,
             );
-        }
-
-        if let Some(p) = heap_ptr {
-            unsafe extern "C" {
-                fn free(ptr: *mut c_void);
-            }
-            unsafe { free(p as *mut c_void) };
         }
 
         let hook_ptr = result.ptr as *mut c_void;
@@ -573,6 +481,7 @@ pub(crate) mod geode_ffi {
 pub use geode_ffi::*;
 
 #[cfg(target_os = "android")]
+#[allow(dead_code)]
 pub fn android_log(msg: &[u8]) {
     unsafe { geode_ffi::alog(msg) }
 }
@@ -625,7 +534,8 @@ impl Hook {
 
         #[cfg(target_os = "android")]
         {
-            use geode_ffi::{AndroidHandlerMetadata, AndroidHookMetadata, call_hook_create};
+            use crate::tulip::{HandlerMetadata, HookMetadata};
+            use geode_ffi::call_hook_create;
 
             let loader = init_loader()?;
             let tulip_conv = TulipConvention::from(convention);
@@ -636,8 +546,10 @@ impl Hook {
                 return None;
             }
 
-            let handler_meta = AndroidHandlerMetadata::new(conv_ptr, conv_ctrl);
-            let hook_meta = AndroidHookMetadata { priority };
+            let conv_shared: crate::stl::StlSharedPtr<c_void> =
+                unsafe { std::mem::transmute((conv_ptr, conv_ctrl)) };
+            let handler_meta = HandlerMetadata::with_convention(conv_shared);
+            let hook_meta = HookMetadata::new(priority);
             let result = call_hook_create(address, detour, name, handler_meta, hook_meta)?;
 
             let mod_ptr = Mod::get().map(|m| m.ptr()).unwrap_or(std::ptr::null_mut());

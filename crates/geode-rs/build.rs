@@ -27,10 +27,32 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "bindgen")]
     generate_cocos_bindings(&out_path)?;
 
+    #[cfg(feature = "bindgen")]
+    generate_fmod_bindings(&out_path)?;
+
     println!("cargo:rerun-if-changed=bindings/");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=cocos/");
 
+    Ok(())
+}
+
+#[cfg(feature = "bindgen")]
+fn generate_fmod_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
+    let bindings = bindgen::Builder::default()
+        .header("fmod/fmod.h")
+        .header("fmod/fmod_codec.h")
+        .header("fmod/fmod_common.h")
+        .header("fmod/fmod_dsp.h")
+        .header("fmod/fmod_dsp_effects.h")
+        .header("fmod/fmod_errors.h")
+        .header("fmod/fmod_output.h")
+        .prepend_enum_name(false)
+        .derive_debug(false);
+    bindings
+        .generate()
+        .expect("unable to generate fmod bindings")
+        .write_to_file(out_path.join("fmod.rs"))?;
     Ok(())
 }
 
