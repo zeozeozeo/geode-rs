@@ -1,3 +1,4 @@
+pub mod android_symbol;
 pub mod class;
 pub mod function;
 pub mod member;

@@ -3,7 +3,16 @@ use geode_rs::*;
 
 #[geode_main]
 fn main() {
+    #[cfg(target_os = "android")]
+    android_logger::init_once(
+        android_logger::Config::default()
+            .with_tag("geode-rs-example")
+            .with_max_level(log::LevelFilter::Debug),
+    );
+
+    #[cfg(not(target_os = "android"))]
     simple_logger::SimpleLogger::new().init().unwrap();
+
     log::info!("Example mod loaded from Rust!");
 }
 
@@ -20,7 +29,6 @@ impl MyMenuLayer {
         }
 
         self.my_custom_field = 67;
-
         log::debug!("MenuLayer::init hooked from Rust!");
 
         true

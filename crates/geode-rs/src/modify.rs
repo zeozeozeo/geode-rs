@@ -81,10 +81,13 @@ pub fn flush_pending_hooks() {
             {
                 h.enable();
             } else {
+                #[cfg(not(target_os = "android"))]
                 eprintln!(
-                    "[geode-rs] Failed to create hook for address: {:p}",
+                    "[geode-rs] failed to create hook for address: {:p}",
                     hook.address
                 );
+                #[cfg(target_os = "android")]
+                crate::loader::android_log(b"flush_pending_hooks: hook FAILED\0");
             }
         }
     }

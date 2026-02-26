@@ -84,7 +84,7 @@ mod macos {
         })
     }
 
-    extern "C" {
+    unsafe extern "C" {
         fn _dyld_image_count() -> u32;
         fn _dyld_get_image_name(image_index: u32) -> *const std::os::raw::c_char;
         fn _dyld_get_image_vmaddr_slide(image_index: u32) -> usize;
@@ -126,7 +126,7 @@ mod ios {
         })
     }
 
-    extern "C" {
+    unsafe extern "C" {
         fn _dyld_image_count() -> u32;
         fn _dyld_get_image_name(image_index: u32) -> *const std::os::raw::c_char;
         fn _dyld_get_image_vmaddr_slide(image_index: u32) -> usize;
@@ -207,7 +207,59 @@ mod android {
         dli_saddr: *mut std::os::raw::c_void,
     }
 
-    extern "C" {
+    fn get_gd_handle() -> *mut std::os::raw::c_void {
+        static GD_HANDLE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        let handle = *GD_HANDLE.get_or_init(|| {
+            const RTLD_LAZY: std::os::raw::c_int = 0x1;
+            const RTLD_NOLOAD: std::os::raw::c_int = 0x4;
+            unsafe {
+                dlopen(
+                    b"libcocos2dcpp.so\0".as_ptr() as *const std::os::raw::c_char,
+                    RTLD_LAZY | RTLD_NOLOAD,
+                )
+            }
+        });
+        handle as *mut std::os::raw::c_void
+    }
+
+    pub fn android_resolve_sym(sym_bytes: &[u8], slot: &std::sync::atomic::AtomicUsize) -> usize {
+        use std::sync::atomic::Ordering;
+        const SENTINEL: usize = usize::MAX;
+
+        let cached = slot.load(Ordering::Relaxed);
+        if cached == SENTINEL {
+            return 0;
+        }
+        if cached != 0 {
+            return cached;
+        }
+
+        if sym_bytes.is_empty() || sym_bytes[0] == 0 {
+            slot.store(SENTINEL, Ordering::Relaxed);
+            return 0;
+        }
+
+        let handle = get_gd_handle();
+        let addr = unsafe {
+            let sym = dlsym(handle, sym_bytes.as_ptr() as *const std::os::raw::c_char);
+            sym as usize
+        };
+
+        if addr == 0 {
+            slot.store(SENTINEL, Ordering::Relaxed);
+            return 0;
+        }
+
+        let base = get();
+        let offset = if addr > base { addr - base } else { 0 };
+        slot.store(
+            if offset == 0 { SENTINEL } else { offset },
+            Ordering::Relaxed,
+        );
+        offset
+    }
+
+    unsafe extern "C" {
         fn dlopen(
             filename: *const std::os::raw::c_char,
             flag: std::os::raw::c_int,
@@ -231,7 +283,7 @@ pub use macos::{get, get_geode};
 pub use ios::{get, get_geode};
 
 #[cfg(target_os = "android")]
-pub use android::{get, get_geode};
+pub use android::{android_resolve_sym, get, get_geode};
 
 #[cfg(not(any(
     target_os = "windows",

@@ -5,6 +5,13 @@ pub mod modify;
 pub mod stl;
 pub mod tulip;
 
+#[cfg(target_os = "android")]
+#[link(name = "log")] // __android_log_print
+unsafe extern "C" {}
+#[cfg(target_os = "android")]
+#[link(name = "dl")] // dlopen/dlsym
+unsafe extern "C" {}
+
 pub use base::*;
 pub use convention::*;
 pub use loader::*;

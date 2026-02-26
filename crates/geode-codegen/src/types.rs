@@ -373,7 +373,9 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
             }
         }
 
-        if name == "string" { return RustType::KnownClass("GdString".to_string()) }
+        if name == "string" {
+            return RustType::KnownClass("GdString".to_string());
+        }
     }
 
     if type_str.starts_with("std::") {
@@ -402,7 +404,7 @@ pub fn cpp_to_rust_type(cpp_type: &str) -> RustType {
 pub fn generate_types_mod(use_cocos_bindgen: bool) -> String {
     let mut output = String::new();
 
-    output.push_str("#![allow(non_camel_case_types, dead_code)]\n\n");
+    output.push_str("#![allow(non_camel_case_types, dead_code, unused_imports)]\n\n");
     output.push_str("use std::ffi::c_void;\n\n");
 
     output.push_str("pub type c_int = i32;\n");
@@ -420,51 +422,14 @@ pub fn generate_types_mod(use_cocos_bindgen: bool) -> String {
     output.push_str("pub type c_double = f64;\n\n");
 
     output.push_str(
-        r#"#[repr(C)]
-pub struct GdString {
-    _storage: [u8; 16],
-    _size: usize,
-    _capacity: usize,
-}
+        r#"use crate::stl;
 
-#[repr(C)]
-pub struct GdVector<T> {
-    _first: *mut T,
-    _last: *mut T,
-    _end: *mut T,
-}
-
-#[repr(C)]
-pub struct GdSet<T> {
-    _head: *mut c_void,
-    _size: usize,
-    _marker: std::marker::PhantomData<T>,
-}
-
-#[repr(C)]
-pub struct GdMap<K, V> {
-    _head: *mut c_void,
-    _size: usize,
-    _marker: std::marker::PhantomData<(K, V)>,
-}
-
-#[repr(C)]
-pub struct GdUnorderedMap<K, V> {
-    #[cfg(target_os = "windows")]
-    _data: [usize; 8],
-    #[cfg(not(target_os = "windows"))]
-    _data: [usize; 4],
-    _marker: std::marker::PhantomData<(K, V)>,
-}
-
-#[repr(C)]
-pub struct GdUnorderedSet<T> {
-    #[cfg(target_os = "windows")]
-    _storage: [u64; 8],
-    #[cfg(not(target_os = "windows"))]
-    _storage: [usize; 4],
-    _marker: std::marker::PhantomData<T>,
-}
+pub type GdString = stl::StlString;
+pub type GdVector<T> = stl::StlVector<T>;
+pub type GdSet<T> = stl::StlSet<T>;
+pub type GdMap<K, V> = stl::StlMap<K, V>;
+pub type GdUnorderedMap<K, V> = stl::StlUnorderedMap<K, V>;
+pub type GdUnorderedSet<T> = stl::StlUnorderedSet<T>;
 "#,
     );
 

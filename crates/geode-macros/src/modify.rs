@@ -120,9 +120,18 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
             let class_name_inner = class_name.clone();
             let hook_registration = quote! {
                 unsafe {
-                    let addr = ::geode_rs::classes::#class_name_inner::#addr_const;
-                    let detour = #detour_func_name as *mut ::std::ffi::c_void;
-                    let _ = ::geode_rs::modify::register_hook(addr, detour, #hook_name, #convention);
+                    let addr = ::geode_rs::classes::#class_name_inner::#addr_const();
+                    if addr == 0 {
+                        #[cfg(target_os = "android")]
+                        ::geode_rs::loader::android_log(
+                            concat!("WARN: address for ", #hook_name, " resolved to 0, skipping hook\0").as_bytes()
+                        );
+                        #[cfg(not(target_os = "android"))]
+                        eprintln!("[geode-rs] WARN: address for {} is 0, skipping hook", #hook_name);
+                    } else {
+                        let detour = #detour_func_name as *mut ::std::ffi::c_void;
+                        let _ = ::geode_rs::modify::register_hook(addr, detour, #hook_name, #convention);
+                    }
                 }
             };
             hook_registrations.push(hook_registration);

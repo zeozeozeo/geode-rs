@@ -1,7 +1,8 @@
 {
   "geode": "5.0.0",
   "gd": {
-    "win": "*"
+    "win": "*",
+    "android": "*"
   },
   "id": "test.example_mod",
   "version": "1.0.0",

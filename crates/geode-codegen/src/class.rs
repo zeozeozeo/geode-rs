@@ -17,8 +17,7 @@ pub fn generate_class(
     let mut output = String::new();
 
     if generate_prelude {
-        output.push_str("#![allow(unused_imports, non_snake_case, non_camel_case_types, dead_code, unsafe_op_in_unsafe_fn, clippy::missing_safety_doc, clippy::too_many_arguments)]\n");
-
+        output.push_str("#![allow(unused_imports, non_snake_case, non_camel_case_types, dead_code, unsafe_op_in_unsafe_fn, clippy::missing_safety_doc, clippy::too_many_arguments, unreachable_code)]\n");
         output.push_str("use std::ffi::c_void;\n");
         output.push_str("use crate::base;\n");
         output.push_str("use crate::types::*;\n");
@@ -76,9 +75,7 @@ pub fn generate_class(
     }
 
     output.push_str("}\n\n");
-
     output.push_str(&generate_impl_block(class, platform, generate_docs));
-
     output
 }
 
@@ -131,9 +128,7 @@ fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -
     }
 
     output.push_str("}\n\n");
-
     output.push_str(&generate_ctors_and_dtor(class, platform, generate_docs));
-
     output
 }
 

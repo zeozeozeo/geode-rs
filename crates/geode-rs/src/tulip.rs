@@ -54,17 +54,17 @@ pub struct AbstractFunction {
 }
 
 impl AbstractFunction {
-    pub const fn new(return_type: AbstractType, params: StlVector<AbstractType>) -> Self {
+    pub fn new(return_type: AbstractType, params: StlVector<AbstractType>) -> Self {
         Self {
             m_return: return_type,
             m_parameters: params,
         }
     }
 
-    pub const fn void_return() -> Self {
+    pub fn void_return() -> Self {
         Self {
             m_return: AbstractType::VOID,
-            m_parameters: StlVector::empty(),
+            m_parameters: StlVector::new(),
         }
     }
 }
@@ -72,6 +72,18 @@ impl AbstractFunction {
 impl Default for AbstractFunction {
     fn default() -> Self {
         Self::void_return()
+    }
+}
+
+impl Clone for AbstractFunction {
+    fn clone(&self) -> Self {
+        Self {
+            m_return: AbstractType {
+                m_size: self.m_return.m_size,
+                m_kind: self.m_return.m_kind,
+            },
+            m_parameters: StlVector::new(),
+        }
     }
 }
 

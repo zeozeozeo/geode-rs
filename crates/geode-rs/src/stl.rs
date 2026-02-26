@@ -1,138 +1,83 @@
-// FIXME: should be windows specific.. later implement for other platforms
+#[cfg(windows)]
+pub use stl_core::msvc::{Variant2, optional, shared_ptr, string, string_view, vector};
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct StlString {
-    _bx: StlStringContainer,
-    _mysize: usize,
-    _myres: usize,
-}
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+pub use stl_core::libcxx::{Variant2, optional, shared_ptr, string, string_view, vector};
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-union StlStringContainer {
-    _buf: [u8; 16],
-    _ptr: *mut u8,
-}
+pub use stl_core::containers::{map, set, unordered_map, unordered_set};
 
-impl StlString {
-    pub fn new_from_str(s: &str) -> Self {
-        let bytes = s.as_bytes();
-        let len = bytes.len();
+pub type StlString = string;
+pub type StlVector<T> = vector<T>;
+pub type StlSharedPtr<T> = shared_ptr<T>;
+pub type StlSet<T> = set<T>;
+pub type StlMap<K, V> = map<K, V>;
+pub type StlUnorderedMap<K, V> = unordered_map<K, V>;
+pub type StlUnorderedSet<T> = unordered_set<T>;
 
-        if len < 16 {
-            let mut buf = [0u8; 16];
-            buf[..len].copy_from_slice(bytes);
-            Self {
-                _bx: StlStringContainer { _buf: buf },
-                _mysize: len,
-                _myres: 15,
-            }
-        } else {
-            let mut v = bytes.to_vec();
-            v.push(0);
-            let ptr = v.as_mut_ptr();
-            let capacity = v.capacity() - 1;
-            std::mem::forget(v);
-            Self {
-                _bx: StlStringContainer { _ptr: ptr },
-                _mysize: len,
-                _myres: capacity,
-            }
+#[cfg(not(any(windows, target_os = "macos", target_os = "ios", target_os = "android")))]
+mod fallback {
+    #[repr(C)]
+    pub struct string {
+        _data: [u8; 24],
+    }
+    impl Default for string {
+        fn default() -> Self {
+            Self { _data: [0u8; 24] }
+        }
+    }
+    impl From<&str> for string {
+        fn from(_: &str) -> Self {
+            Self::default()
         }
     }
 
-    pub const fn empty() -> Self {
-        Self {
-            _bx: StlStringContainer { _buf: [0u8; 16] },
-            _mysize: 0,
-            _myres: 15,
+    #[repr(C)]
+    pub struct vector<T> {
+        _begin: *mut T,
+        _end: *mut T,
+        _cap: *mut T,
+    }
+    impl<T> vector<T> {
+        pub fn new() -> Self {
+            Self {
+                _begin: std::ptr::null_mut(),
+                _end: std::ptr::null_mut(),
+                _cap: std::ptr::null_mut(),
+            }
         }
     }
-}
-
-impl Default for StlString {
-    fn default() -> Self {
-        Self::empty()
+    impl<T> Default for vector<T> {
+        fn default() -> Self {
+            Self::new()
+        }
     }
-}
 
-#[repr(C)]
-pub struct StlVector<T> {
-    _myfirst: *const T,
-    _mylast: *const T,
-    _myend: *const T,
-}
-
-impl<T> StlVector<T> {
-    pub fn from_vec(v: Vec<T>) -> Self {
-        if v.is_empty() {
+    #[repr(C)]
+    pub struct shared_ptr<T> {
+        _ptr: *mut T,
+        _ctrl: *mut std::ffi::c_void,
+    }
+    impl<T> shared_ptr<T> {
+        pub fn is_null(&self) -> bool {
+            self._ptr.is_null()
+        }
+        pub fn as_ptr(&self) -> *mut T {
+            self._ptr
+        }
+    }
+    impl<T> Default for shared_ptr<T> {
+        fn default() -> Self {
             Self {
-                _myfirst: std::ptr::null(),
-                _mylast: std::ptr::null(),
-                _myend: std::ptr::null(),
-            }
-        } else {
-            let ptr = v.as_ptr();
-            let len = v.len();
-            let cap = v.capacity();
-            std::mem::forget(v);
-            Self {
-                _myfirst: ptr,
-                _mylast: unsafe { ptr.add(len) },
-                _myend: unsafe { ptr.add(cap) },
+                _ptr: std::ptr::null_mut(),
+                _ctrl: std::ptr::null_mut(),
             }
         }
     }
 
-    pub const fn empty() -> Self {
-        Self {
-            _myfirst: std::ptr::null(),
-            _mylast: std::ptr::null(),
-            _myend: std::ptr::null(),
-        }
-    }
+    pub type optional<T> = Option<T>;
+    pub type string_view = ();
+    pub type Variant2<A, B> = (A, B);
 }
 
-impl<T> Default for StlVector<T> {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-#[repr(C)]
-pub struct StlSharedPtr<T> {
-    ptr: *const T,
-    rep: *const std::ffi::c_void,
-}
-
-impl<T> StlSharedPtr<T> {
-    pub const fn empty() -> Self {
-        Self {
-            ptr: std::ptr::null(),
-            rep: std::ptr::null(),
-        }
-    }
-
-    pub fn is_null(&self) -> bool {
-        self.ptr.is_null()
-    }
-
-    pub fn as_ptr(&self) -> *const T {
-        self.ptr
-    }
-}
-
-impl<T> Default for StlSharedPtr<T> {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl<T> Clone for StlSharedPtr<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T> Copy for StlSharedPtr<T> {}
+#[cfg(not(any(windows, target_os = "macos", target_os = "ios", target_os = "android")))]
+pub use fallback::{Variant2, optional, shared_ptr, string, string_view, vector};

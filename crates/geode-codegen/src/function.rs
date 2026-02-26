@@ -1,3 +1,4 @@
+use crate::android_symbol::generate_android_symbol;
 use broma_rs::{Function, FunctionBindField, FunctionType, PlatformNumber};
 
 use crate::platform::Platform;
@@ -136,7 +137,12 @@ pub fn generate_member_function(
     };
 
     let addr_const_name = format!("{}_ADDR", func_name.to_uppercase());
-    output.push_str(&generate_platform_addresses_const(&func_name, &func.binds));
+    output.push_str(&generate_platform_addresses_const(
+        &func_name,
+        &func.binds,
+        class_name,
+        func,
+    ));
     output.push('\n');
 
     let convention = "extern \"C\"";
@@ -172,11 +178,11 @@ pub fn generate_member_function(
     ));
 
     output.push_str(&format!(
-        "    unsafe {{\n        let func: {} = std::mem::transmute(base::get() + {}{});\n        func({})\n    }}\n",
-        fn_type,
-        if is_impl { "Self::" } else { "" },
-        addr_const_name,
-        call_args.join(", ")
+        "    unsafe {{\n        let func: {fn_type} = std::mem::transmute(base::get() + {prefix}{addr}());\n        func({args})\n    }}\n",
+        fn_type = fn_type,
+        prefix = if is_impl { "Self::" } else { "" },
+        addr = addr_const_name,
+        args = call_args.join(", ")
     ));
     output.push_str("}\n\n");
 
@@ -205,57 +211,49 @@ fn to_ref_types(ty: &crate::types::RustType) -> (String, String) {
     }
 }
 
-pub fn generate_platform_addresses_const(func_name: &str, binds: &PlatformNumber) -> String {
+pub fn generate_platform_addresses_const(
+    func_name: &str,
+    binds: &PlatformNumber,
+    class_name: &str,
+    func: &FunctionBindField,
+) -> String {
     let mut output = String::new();
-
     let const_name = format!("{}_ADDR", func_name.to_uppercase());
 
-    output.push_str(&format!("pub const {}: usize = ", const_name));
+    output.push_str(&format!("pub fn {}() -> usize {{\n", const_name));
 
-    output.push_str("{\n");
     output.push_str("    #[cfg(target_os = \"windows\")]");
-    if binds.win > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.win));
-    } else {
-        output.push_str(" { 0 }\n");
-    }
-
+    output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.win));
     output.push_str("    #[cfg(all(target_os = \"macos\", target_arch = \"x86_64\"))]");
-    if binds.imac > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.imac));
-    } else {
-        output.push_str(" { 0 }\n");
-    }
-
+    output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.imac));
     output.push_str("    #[cfg(all(target_os = \"macos\", target_arch = \"aarch64\"))]");
-    if binds.m1 > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.m1));
-    } else {
-        output.push_str(" { 0 }\n");
-    }
-
+    output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.m1));
     output.push_str("    #[cfg(target_os = \"ios\")]");
-    if binds.ios > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.ios));
-    } else {
-        output.push_str(" { 0 }\n");
-    }
+    output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.ios));
 
     output.push_str("    #[cfg(all(target_os = \"android\", target_arch = \"arm\"))]");
     if binds.android32 > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.android32));
+        output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.android32));
     } else {
-        output.push_str(" { 0 }\n");
+        let android_symbol = generate_android_symbol(class_name, func);
+        output.push_str(&format!(
+            " {{ static A: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0); return crate::base::android_resolve_sym(b\"{sym}\\0\", &A); }}\n",
+            sym = android_symbol
+        ));
     }
 
     output.push_str("    #[cfg(all(target_os = \"android\", target_arch = \"aarch64\"))]");
     if binds.android64 > 0 {
-        output.push_str(&format!(" {{ 0x{:x} }}\n", binds.android64));
+        output.push_str(&format!(" {{ return 0x{:x}; }}\n", binds.android64));
     } else {
-        output.push_str(" { 0 }\n");
+        let android_symbol = generate_android_symbol(class_name, func);
+        output.push_str(&format!(
+            " {{ static A: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0); return crate::base::android_resolve_sym(b\"{sym}\\0\", &A); }}\n",
+            sym = android_symbol
+        ));
     }
 
-    output.push_str("};\n");
+    output.push_str("    0\n}\n");
 
     output
 }
