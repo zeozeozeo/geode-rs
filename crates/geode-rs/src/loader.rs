@@ -655,6 +655,7 @@ pub mod internal {
     use super::*;
 
     #[cfg(target_os = "android")]
+    #[allow(dead_code)]
     unsafe fn android_log(msg: &[u8]) {
         unsafe extern "C" {
             fn __android_log_print(prio: i32, tag: *const u8, fmt: *const u8, ...) -> i32;

@@ -40,6 +40,11 @@ impl<T> ModifyStorage<T> {
         let entry = map.entry(key).or_insert_with(f);
         unsafe { &mut *(entry as *mut T) }
     }
+
+    pub fn remove(&self, key: usize) {
+        let mut map = self.get_data().lock().unwrap();
+        map.remove(&key);
+    }
 }
 
 struct PendingHook {

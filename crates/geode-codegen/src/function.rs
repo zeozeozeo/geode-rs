@@ -108,7 +108,11 @@ pub fn generate_member_function(
 
     if !is_static {
         fn_type_args.push(("this".to_string(), format!("*mut {}", class_name)));
-        ref_args.push(("this".to_string(), format!("&mut {}", class_name)));
+        if is_impl {
+            ref_args.push(("self".to_string(), format!("&mut {}", class_name)));
+        } else {
+            ref_args.push(("this".to_string(), format!("&mut {}", class_name)));
+        }
     }
 
     for arg in &func.prototype.args {
@@ -171,7 +175,13 @@ pub fn generate_member_function(
         func_name,
         ref_args
             .iter()
-            .map(|(n, t)| format!("{}: {}", n, t))
+            .map(|(n, t)| {
+                if n == "self" {
+                    "&mut self".to_string()
+                } else {
+                    format!("{}: {}", n, t)
+                }
+            })
             .collect::<Vec<_>>()
             .join(", "),
         ret_type.to_rust_str()

@@ -1,6 +1,5 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use syn::{Ident, parse_macro_input};
 
 mod main_;
 mod modify;
@@ -14,10 +13,10 @@ fn convert_result(result: syn::Result<TokenStream2>) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn modify(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let class_name = parse_macro_input!(attr as Ident);
+    let attr: TokenStream2 = attr.into();
     let item: TokenStream2 = item.into();
 
-    convert_result(modify::expand_modify(class_name, item))
+    convert_result(modify::expand_modify(attr, item))
 }
 
 #[proc_macro_attribute]

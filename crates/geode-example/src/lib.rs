@@ -24,7 +24,7 @@ struct MyMenuLayer {
 #[modify(MenuLayer)]
 impl MyMenuLayer {
     fn init(&mut self, this: &mut MenuLayer) -> bool {
-        if !MenuLayer::init(this) {
+        if !this.init() {
             return false;
         }
 
@@ -35,16 +35,27 @@ impl MyMenuLayer {
     }
 }
 
-#[modify(PlayLayer)]
+// Note: by default, #[modify] storage is unique per-hook. This means that even if the game
+//       eventually constructs a second PlayLayer, `self` will still point to the same data.
+//       If you want to have unique storage per instance of a class, use #[modify(Class, unique)]
+//       However, this makes you responsible of hooking a destructor and calling Self::free(this)
+//       to free up the storage slot when the class eventually gets destructed.
+
+#[modify(PlayLayer, unique)] // unique storage per constructed instance of PlayLayer
 struct MyPlayLayer {
     print_timer: f32,
 }
 
-#[modify(PlayLayer)]
+#[modify(PlayLayer, unique)]
 impl MyPlayLayer {
-    fn play_layer_ctor_1(&mut self, this: &mut PlayLayer) {
+    fn play_layer_ctor(&mut self, this: &mut PlayLayer) {
         log::info!("PlayLayer constructor hook!");
-        PlayLayer::play_layer_ctor_1(this);
+        this.play_layer_ctor();
+    }
+
+    fn play_layer_dtor(&mut self, this: &mut PlayLayer) {
+        Self::free(this); // release the #[modify] storage slot, or this is a memory leak!
+        this.play_layer_dtor();
     }
 
     fn post_update(&mut self, this: &mut PlayLayer, dt: f32) {
@@ -53,6 +64,7 @@ impl MyPlayLayer {
             log::info!("PlayLayer post_update: currentTime {}", this.current_time); // Pretty sure this is actually broken in geode rn tho, the codegen offsets are correct
             self.print_timer = 0.0;
         }
-        PlayLayer::post_update(this, dt);
+        this.remove_all_checkpoints(); // disallow placing checkpoints
+        this.post_update(dt);
     }
 }

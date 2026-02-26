@@ -1,13 +1,41 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
+use syn::parse::{Parse, ParseStream};
 use syn::{FnArg, Ident, Item, ItemImpl, ItemStruct, Result, Type, TypeReference};
 
-pub fn expand_modify(class_name: Ident, item: TokenStream2) -> Result<TokenStream2> {
+struct ModifyArgs {
+    class_name: Ident,
+    unique: bool,
+}
+
+impl Parse for ModifyArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let class_name: Ident = input.parse()?;
+        let mut unique = false;
+
+        if input.peek(syn::Token![,]) {
+            input.parse::<syn::Token![,]>()?;
+            let ident: Ident = input.parse()?;
+            if ident == "unique" {
+                unique = true;
+            } else {
+                return Err(syn::Error::new_spanned(ident, "expected `unique`"));
+            }
+        }
+
+        Ok(Self { class_name, unique })
+    }
+}
+
+pub fn expand_modify(args: TokenStream2, item: TokenStream2) -> Result<TokenStream2> {
+    let parsed_args: ModifyArgs = syn::parse2(args)?;
     let parsed: Item = syn::parse2(item.clone())?;
 
     match parsed {
-        Item::Struct(struct_item) => expand_modify_struct(class_name, struct_item),
-        Item::Impl(impl_item) => expand_modify_impl(class_name, impl_item),
+        Item::Struct(struct_item) => {
+            expand_modify_struct(parsed_args.class_name, parsed_args.unique, struct_item)
+        }
+        Item::Impl(impl_item) => expand_modify_impl(parsed_args.class_name, impl_item),
         _ => Err(syn::Error::new_spanned(
             parsed,
             "modify attribute can only be applied to structs or impl blocks",
@@ -15,7 +43,11 @@ pub fn expand_modify(class_name: Ident, item: TokenStream2) -> Result<TokenStrea
     }
 }
 
-fn expand_modify_struct(class_name: Ident, struct_item: ItemStruct) -> Result<TokenStream2> {
+fn expand_modify_struct(
+    class_name: Ident,
+    unique: bool,
+    struct_item: ItemStruct,
+) -> Result<TokenStream2> {
     let struct_name = &struct_item.ident;
     let struct_name_str = struct_name.to_string();
     let storage_ident = format_ident!("__{}_STORAGE", struct_name_str.to_uppercase());
@@ -26,6 +58,12 @@ fn expand_modify_struct(class_name: Ident, struct_item: ItemStruct) -> Result<To
         .filter_map(|f| f.ident.clone())
         .collect();
 
+    let key_expr = if unique {
+        quote!(this as usize)
+    } else {
+        quote!(0)
+    };
+
     let expanded = quote! {
         #struct_item
 
@@ -35,13 +73,17 @@ fn expand_modify_struct(class_name: Ident, struct_item: ItemStruct) -> Result<To
 
         impl #struct_name {
             pub fn get(this: *mut ::geode_rs::classes::#class_name) -> Option<&'static mut Self> {
-                #storage_ident.get(this as usize)
+                #storage_ident.get(#key_expr)
             }
 
             pub fn get_or_default(this: *mut ::geode_rs::classes::#class_name) -> &'static mut Self {
-                #storage_ident.get_or_default(this as usize, || Self {
+                #storage_ident.get_or_default(#key_expr, || Self {
                     #(#field_names: Default::default()),*
                 })
+            }
+
+            pub fn free(this: *mut ::geode_rs::classes::#class_name) {
+                #storage_ident.remove(#key_expr);
             }
         }
     };
