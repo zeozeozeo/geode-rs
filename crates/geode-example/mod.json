@@ -2,7 +2,8 @@
   "geode": "5.1.0",
   "gd": {
     "win": "*",
-    "android": "*"
+    "android": "*",
+    "mac": "*"
   },
   "id": "test.example_mod",
   "version": "1.0.0",

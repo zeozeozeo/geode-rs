@@ -39,6 +39,18 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(feature = "bindgen")]
 fn generate_fmod_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
+    let clang_target = match (target_os.as_str(), target_arch.as_str()) {
+        ("macos", "aarch64") => "aarch64-apple-macosx11.0.0",
+        ("macos", "x86_64") => "x86_64-apple-macosx10.15.0",
+        ("ios", _) => "aarch64-apple-ios14.0",
+        ("android", "aarch64") => "aarch64-linux-android21",
+        ("android", _) => "armv7-linux-android21",
+        _ => "x86_64-pc-win32",
+    };
+
     let bindings = bindgen::Builder::default()
         .header("fmod/fmod.h")
         .header("fmod/fmod_codec.h")
@@ -47,6 +59,7 @@ fn generate_fmod_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
         .header("fmod/fmod_dsp_effects.h")
         .header("fmod/fmod_errors.h")
         .header("fmod/fmod_output.h")
+        .clang_arg(format!("--target={clang_target}"))
         .prepend_enum_name(false)
         .derive_debug(false);
     bindings
@@ -62,17 +75,74 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
     let cocos_include = PathBuf::from("cocos/include");
     let cocos_dir = PathBuf::from("cocos");
 
-    let builder = bindgen::Builder::default()
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
+    let (platform_include, cc_platform, geode_platform, clang_target, extra_defines) =
+        match (target_os.as_str(), target_arch.as_str()) {
+            ("macos", "aarch64") => (
+                "cocos/platform/mac",
+                "CC_PLATFORM_MAC",
+                "GEODE_IS_MACOS",
+                "aarch64-apple-macosx11.0.0",
+                vec!["-DGEODE_IS_DESKTOP"],
+            ),
+            ("macos", "x86_64") => (
+                "cocos/platform/mac",
+                "CC_PLATFORM_MAC",
+                "GEODE_IS_MACOS",
+                "x86_64-apple-macosx10.15.0",
+                vec!["-DGEODE_IS_DESKTOP"],
+            ),
+            ("ios", _) => (
+                "cocos/platform/ios",
+                "CC_PLATFORM_IOS",
+                "GEODE_IS_IOS",
+                "aarch64-apple-ios14.0",
+                vec![],
+            ),
+            ("android", "aarch64") => (
+                "cocos/platform/android",
+                "CC_PLATFORM_ANDROID",
+                "GEODE_IS_ANDROID",
+                "aarch64-linux-android21",
+                vec![],
+            ),
+            ("android", _) => (
+                "cocos/platform/android",
+                "CC_PLATFORM_ANDROID",
+                "GEODE_IS_ANDROID",
+                "armv7-linux-android21",
+                vec![],
+            ),
+            _ => (
+                "cocos/platform/win32",
+                "CC_PLATFORM_WIN32",
+                "GEODE_IS_WINDOWS",
+                "x86_64-pc-win32",
+                vec![
+                    "-DGEODE_IS_DESKTOP",
+                    "-DDWORD=unsigned long",
+                    "-DWORD=unsigned short",
+                    "-D_AMD64_",
+                    "-D_AMD64",
+                    "-D_M_AMD64",
+                    "-DWIN64",
+                    "-D_WIN64",
+                ],
+            ),
+        };
+
+    let mut builder = bindgen::Builder::default()
         .header("cocos/include/cocos2d.h")
         .clang_arg("-xc++")
         .clang_arg("-std=c++20")
         .clang_arg(format!("-I{}", cocos_include.display()))
         .clang_arg(format!("-I{}", cocos_dir.display()))
         .clang_arg("-Icocos/kazmath/include")
-        .clang_arg("-Icocos/platform/win32")
-        .clang_arg("-DCC_TARGET_PLATFORM=CC_PLATFORM_WIN32")
-        .clang_arg("-DGEODE_IS_WINDOWS")
-        .clang_arg("-DGEODE_IS_DESKTOP")
+        .clang_arg(format!("-I{platform_include}"))
+        .clang_arg(format!("-DCC_TARGET_PLATFORM={cc_platform}"))
+        .clang_arg(format!("-D{geode_platform}"))
         .clang_arg("-DGEODE_FRIEND_MODIFY=")
         .clang_arg("-DGEODE_CUSTOM_CONSTRUCTOR_BEGIN(Class_)=")
         .clang_arg("-DGEODE_ZERO_CONSTRUCTOR_BEGIN(Class_)=")
@@ -80,14 +150,13 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
         .clang_arg("-DGEODE_DLL=")
         .clang_arg("-DGEODE_NONINHERITED_MEMBERS=")
         .clang_arg("-DGEODE_IS_MEMBER_TEST")
-        .clang_arg("-DDWORD=unsigned long")
-        .clang_arg("-DWORD=unsigned short")
-        .clang_arg("-D_AMD64_")
-        .clang_arg("-D_AMD64")
-        .clang_arg("-D_M_AMD64")
-        .clang_arg("-DWIN64")
-        .clang_arg("-D_WIN64")
-        .clang_arg("--target=x86_64-pc-win32")
+        .clang_arg(format!("--target={clang_target}"));
+
+    for def in &extra_defines {
+        builder = builder.clang_arg(*def);
+    }
+
+    let builder = builder
         .derive_default(true)
         .derive_copy(true)
         .derive_debug(false)
@@ -117,15 +186,56 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
         .blocklist_type("std_vector")
         .blocklist_type("std_map")
         .blocklist_type("std_set")
+        .blocklist_type("std_list")
+        .blocklist_type("std_deque")
+        .blocklist_type("std_queue")
+        .blocklist_type("std_stack")
+        .blocklist_type("std_multimap")
+        .blocklist_type("std_multiset")
+        .blocklist_type("std_unordered_map")
+        .blocklist_type("std_unordered_set")
+        .blocklist_type("std_unordered_multimap")
+        .blocklist_type("std_unordered_multiset")
+        .blocklist_type("std_pair")
+        .blocklist_type("std_tuple")
+        .blocklist_type("std_optional")
+        .blocklist_type("std_variant")
+        .blocklist_type("std_unique_ptr")
+        .blocklist_type("std_shared_ptr")
+        .blocklist_type("std_weak_ptr")
+        .blocklist_type("std_function")
         .blocklist_type("std_allocator")
         .blocklist_type("std_basic_string")
         .blocklist_type("std_char_traits")
         .blocklist_type("std_filesystem.*")
         .blocklist_type(".*__bindgen_vtable.*")
+        .blocklist_type("va_list")
+        .blocklist_type("__builtin_va_list")
+        .blocklist_type("__va_list_tag")
+        .blocklist_type(".*libcpp.*")
+        .blocklist_type(".*shared_count.*")
+        .blocklist_type(".*once_flag.*")
+        .blocklist_type(".*error_category.*")
+        .blocklist_type(".*error_condition.*")
+        .blocklist_type(".*error_code.*")
+        .blocklist_type(".*system_error.*")
+        .blocklist_type(".*exception.*")
+        .blocklist_type(".*runtime_error.*")
         .blocklist_function("std_.*")
         .blocklist_function("__.*")
         .blocklist_function("pugi.*")
+        .blocklist_function(".*libcpp.*")
+        .blocklist_function(".*shared_count.*")
+        .blocklist_function(".*once_flag.*")
+        .blocklist_function(".*error_category.*")
+        .blocklist_function(".*error_condition.*")
+        .blocklist_function(".*error_code.*")
+        .blocklist_function(".*system_error.*")
+        .blocklist_function(".*exception.*")
+        .blocklist_function(".*runtime_error.*")
         .blocklist_var("std_.*")
+        .blocklist_var(".*once_flag.*")
+        .blocklist_var(".*libcpp.*")
         .parse_callbacks(Box::new(CocosCallbacks));
 
     let bindings = builder
@@ -141,7 +251,11 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
     output.push_str("#![allow(clippy::missing_safety_doc)]\n");
     output.push_str("#![allow(clippy::too_many_arguments)]\n");
     output.push_str("#![allow(unsafe_op_in_unsafe_fn)]\n\n");
-    output.push_str("use super::types::GdString;\n\n");
+    output.push_str("use super::types::GdString;\n");
+    output.push_str("#[allow(non_camel_case_types)] pub type va_list = *mut std::ffi::c_void;\n");
+    output.push_str(
+        "#[allow(non_camel_case_types)] #[repr(C)] pub struct __va_list_tag { _priv: [u8; 0] }\n\n",
+    );
 
     let bindings_str = bindings.to_string();
     let processed = process_cocos_bindings(&bindings_str);
@@ -268,6 +382,10 @@ fn process_cocos_bindings(input: &str) -> String {
             && (trimmed.contains("std_vector<")
                 || trimmed.contains("std_map<")
                 || trimmed.contains("std_set<")
+                || trimmed.contains("std_list<")
+                || trimmed.contains("std_deque<")
+                || trimmed.contains("std_unordered_map<")
+                || trimmed.contains("std_unordered_set<")
                 || trimmed.contains("gd_vector<")
                 || trimmed.contains("gd_map<")
                 || trimmed.contains("gd_set<"))
@@ -535,6 +653,23 @@ fn replace_all_template_types(s: &str) -> String {
         "std_vector<",
         "std_map<",
         "std_set<",
+        "std_list<",
+        "std_deque<",
+        "std_queue<",
+        "std_stack<",
+        "std_multimap<",
+        "std_multiset<",
+        "std_unordered_map<",
+        "std_unordered_set<",
+        "std_unordered_multimap<",
+        "std_unordered_multiset<",
+        "std_pair<",
+        "std_tuple<",
+        "std_optional<",
+        "std_unique_ptr<",
+        "std_shared_ptr<",
+        "std_weak_ptr<",
+        "std_function<",
         "std_allocator<",
         "std_basic_string<",
         "std_char_traits<",

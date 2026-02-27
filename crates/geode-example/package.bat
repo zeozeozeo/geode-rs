@@ -31,6 +31,69 @@ if %errorlevel% neq 0 (
     )
 )
 
+where cargo-zigbuild >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Skipping Mac builds: cargo-zigbuild not found. Install with: cargo install cargo-zigbuild
+    goto :android
+)
+where zig >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Skipping Mac builds: zig not found in PATH. Download from https://ziglang.org/download/
+    goto :android
+)
+
+echo.
+echo Building %MOD_ID% for Mac (aarch64 / Apple Silicon)...
+cargo zigbuild --target aarch64-apple-darwin --release -p geode-example
+if %errorlevel% neq 0 (
+    echo Mac aarch64 build failed.
+    set BUILD_FAILED=1
+    goto :mac_intel
+)
+set MAC_ARM=%PROJECT_ROOT%\target\aarch64-apple-darwin\release\libgeode_example.dylib
+if not exist "!MAC_ARM!" (
+    echo Could not find Mac arm64 dylib: !MAC_ARM!
+    set BUILD_FAILED=1
+    goto :mac_intel
+)
+echo   Built: !MAC_ARM!
+
+:mac_intel
+echo.
+echo Building %MOD_ID% for Mac (x86_64 / Intel)...
+cargo zigbuild --target x86_64-apple-darwin --release -p geode-example
+if %errorlevel% neq 0 (
+    echo Mac x86_64 build failed.
+    set BUILD_FAILED=1
+    goto :mac_combine
+)
+set MAC_X64=%PROJECT_ROOT%\target\x86_64-apple-darwin\release\libgeode_example.dylib
+if not exist "!MAC_X64!" (
+    echo Could not find Mac x86_64 dylib: !MAC_X64!
+    set BUILD_FAILED=1
+    goto :mac_combine
+)
+echo   Built: !MAC_X64!
+
+:mac_combine
+if not defined MAC_ARM goto :mac_combine_skip
+if not defined MAC_X64 goto :mac_combine_skip
+echo.
+echo Combining into universal (fat) Mac binary...
+set MAC_UNIVERSAL=%PROJECT_ROOT%\target\%MOD_ID%.dylib
+cargo run -p mac-universal -- "!MAC_ARM!" "!MAC_X64!" "!MAC_UNIVERSAL!"
+if !errorlevel! neq 0 (
+    echo Failed to create universal Mac binary.
+    set BUILD_FAILED=1
+) else (
+    set BINARY_ARGS=!BINARY_ARGS! --binary "!MAC_UNIVERSAL!"
+    echo   Combined: !MAC_UNIVERSAL!
+)
+goto :android
+:mac_combine_skip
+echo Skipping universal binary: one or both Mac slices are missing.
+
+:android
 where cargo-ndk >nul 2>&1
 if %errorlevel% neq 0 (
     echo Skipping Android builds: cargo-ndk not found. Install with: cargo install cargo-ndk

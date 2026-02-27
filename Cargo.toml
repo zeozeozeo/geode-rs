@@ -7,4 +7,5 @@ members = [
     "crates/geode-macros",
     "crates/geode-example",
     "crates/stl-core",
+    "crates/mac-universal",
 ]

@@ -1,0 +1,12 @@
+[package]
+name = "mac-universal"
+version = "0.1.0"
+edition = "2024"
+description = "Utility to combine aarch64 and x86_64 Mac dylibs into a universal (fat) binary"
+
+[[bin]]
+name = "mac-universal"
+path = "src/main.rs"
+
+[dependencies]
+fat-macho = "0.4"
