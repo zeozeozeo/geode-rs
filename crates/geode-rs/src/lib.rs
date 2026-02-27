@@ -19,7 +19,7 @@ pub use loader::*;
 pub use modify::*;
 pub use tulip::*;
 
-pub use geode_macros::{geode_main, modify};
+pub use geode_macros::{geode_bind, geode_main, modify};
 
 pub use ctor;
 

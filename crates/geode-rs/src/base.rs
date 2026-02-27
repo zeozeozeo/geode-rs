@@ -40,11 +40,18 @@ mod windows_mod {
     }
 
     pub unsafe fn get_proc_address(module: usize, name: &[u8]) -> Option<usize> {
-        let name_c = std::ffi::CString::new(name).ok()?;
-        let addr = GetProcAddress(
-            windows::Win32::Foundation::HMODULE(module as *mut _),
-            PCSTR(name_c.as_ptr() as _),
-        )?;
+        let addr = if name.last() == Some(&0) {
+            GetProcAddress(
+                windows::Win32::Foundation::HMODULE(module as *mut _),
+                PCSTR(name.as_ptr()),
+            )?
+        } else {
+            let name_c = std::ffi::CString::new(name).ok()?;
+            GetProcAddress(
+                windows::Win32::Foundation::HMODULE(module as *mut _),
+                PCSTR(name_c.as_ptr() as _),
+            )?
+        };
         Some(addr as usize)
     }
 }
@@ -303,4 +310,86 @@ pub fn get() -> usize {
 )))]
 pub fn get_geode() -> usize {
     0
+}
+
+#[cfg(not(target_os = "windows"))]
+pub unsafe fn get_proc_address(_module: usize, _name: &[u8]) -> Option<usize> {
+    None
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub unsafe fn dylib_resolve_sym(name: &[u8]) -> Option<usize> {
+    unsafe extern "C" {
+        fn dlsym(
+            handle: *mut std::ffi::c_void,
+            symbol: *const std::os::raw::c_char,
+        ) -> *mut std::ffi::c_void;
+    }
+    const RTLD_DEFAULT: *mut std::ffi::c_void = std::ptr::null_mut();
+    let sym = unsafe { dlsym(RTLD_DEFAULT, name.as_ptr() as *const std::os::raw::c_char) };
+    if sym.is_null() {
+        None
+    } else {
+        Some(sym as usize)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub unsafe fn dylib_resolve_sym(_name: &[u8]) -> Option<usize> {
+    None
+}
+
+#[cfg(target_os = "android")]
+pub unsafe fn android_dlsym_geode(name: &[u8]) -> Option<usize> {
+    unsafe extern "C" {
+        fn dlopen(
+            filename: *const std::os::raw::c_char,
+            flag: std::os::raw::c_int,
+        ) -> *mut std::ffi::c_void;
+        fn dlsym(
+            handle: *mut std::ffi::c_void,
+            symbol: *const std::os::raw::c_char,
+        ) -> *mut std::ffi::c_void;
+    }
+    const RTLD_LAZY: std::os::raw::c_int = 0x1;
+    const RTLD_NOLOAD: std::os::raw::c_int = 0x4;
+
+    #[cfg(target_arch = "aarch64")]
+    let lib_names: &[&[u8]] = &[b"Geode.android64.so\0", b"libGeode.so\0"];
+    #[cfg(target_arch = "arm")]
+    let lib_names: &[&[u8]] = &[b"Geode.android32.so\0", b"libGeode.so\0"];
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "arm")))]
+    let lib_names: &[&[u8]] = &[b"libGeode.so\0"];
+
+    for lib in lib_names {
+        let handle = unsafe {
+            dlopen(
+                lib.as_ptr() as *const std::os::raw::c_char,
+                RTLD_LAZY | RTLD_NOLOAD,
+            )
+        };
+        if !handle.is_null() {
+            let sym = unsafe { dlsym(handle, name.as_ptr() as *const std::os::raw::c_char) };
+            if !sym.is_null() {
+                return Some(sym as usize);
+            }
+        }
+    }
+
+    let sym = unsafe {
+        dlsym(
+            std::ptr::null_mut(),
+            name.as_ptr() as *const std::os::raw::c_char,
+        )
+    };
+    if sym.is_null() {
+        None
+    } else {
+        Some(sym as usize)
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub unsafe fn android_dlsym_geode(_name: &[u8]) -> Option<usize> {
+    None
 }
