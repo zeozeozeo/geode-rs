@@ -1,5 +1,5 @@
 {
-  "geode": "5.1.0",
+  "geode": "5.3.0",
   "gd": {
     "win": "*",
     "android": "*",
@@ -9,5 +9,30 @@
   "version": "1.0.0",
   "name": "Example Mod",
   "developer": "Test Developer",
-  "description": "An example mod written in Rust"
+  "description": "An example mod written in Rust",
+  "settings": {
+    "demo-title": {
+      "type": "title",
+      "name": "Setting 1",
+      "description": "Blablabla 1"
+    },
+    "demo-enabled": {
+      "type": "bool",
+      "name": "Test setting",
+      "description": "Blablabla 2",
+      "default": true
+    },
+    "demo-scale": {
+      "type": "float",
+      "name": "Setting 2",
+      "description": "Blablabla 3",
+      "default": 1.0,
+      "min": 0.5,
+      "max": 2.0,
+      "enable-if": "demo-enabled",
+      "control": {
+        "slider": true
+      }
+    }
+  }
 }

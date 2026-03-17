@@ -1,6 +1,7 @@
 pub mod base;
 pub mod convention;
 pub mod fmod;
+pub mod geode_utils;
 pub mod loader;
 pub mod modify;
 pub mod stl;
@@ -15,6 +16,7 @@ unsafe extern "C" {}
 
 pub use base::*;
 pub use convention::*;
+pub use geode_utils::*;
 pub use loader::*;
 pub use modify::*;
 pub use tulip::*;

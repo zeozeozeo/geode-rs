@@ -327,6 +327,35 @@ pub use ios::{get, get_geode};
 #[cfg(target_os = "android")]
 pub use android::{android_resolve_sym, android_resolve_symbol_abs, get, get_geode};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SymbolScope {
+    Process,
+    Geode,
+    Cocos,
+    Extensions,
+}
+
+fn load_cached_symbol(
+    slot: &std::sync::atomic::AtomicUsize,
+    resolve: impl FnOnce() -> usize,
+) -> usize {
+    use std::sync::atomic::Ordering;
+
+    const SENTINEL: usize = usize::MAX;
+
+    let cached = slot.load(Ordering::Relaxed);
+    if cached == SENTINEL {
+        return 0;
+    }
+    if cached != 0 {
+        return cached;
+    }
+
+    let addr = resolve();
+    slot.store(if addr == 0 { SENTINEL } else { addr }, Ordering::Relaxed);
+    if addr == 0 { 0 } else { addr }
+}
+
 #[cfg(not(any(
     target_os = "windows",
     target_os = "macos",
@@ -352,26 +381,60 @@ pub unsafe fn get_proc_address(_module: usize, _name: &[u8]) -> Option<usize> {
     None
 }
 
+pub fn resolve_symbol(
+    scope: SymbolScope,
+    name: &[u8],
+    slot: &std::sync::atomic::AtomicUsize,
+) -> usize {
+    #[cfg(target_os = "windows")]
+    {
+        let modules: &[usize] = match scope {
+            SymbolScope::Process => &[get(), get_geode(), get_cocos(), get_extensions()],
+            SymbolScope::Geode => &[get_geode()],
+            SymbolScope::Cocos => &[get_cocos()],
+            SymbolScope::Extensions => &[get_extensions()],
+        };
+        resolve_windows_symbol_in_modules_abs(modules, name, slot)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let _ = scope;
+        return resolve_dylib_symbol_abs(name, slot);
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        match scope {
+            SymbolScope::Process | SymbolScope::Geode => {
+                return android_resolve_symbol_abs(name, slot);
+            }
+            SymbolScope::Cocos => return android_resolve_symbol_abs(name, slot),
+            SymbolScope::Extensions => return 0,
+        }
+    }
+
+    #[cfg(not(any(
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "android"
+    )))]
+    {
+        let _ = (scope, name, slot);
+        0
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub fn resolve_windows_symbol_abs(
     module: usize,
     name: &[u8],
     slot: &std::sync::atomic::AtomicUsize,
 ) -> usize {
-    use std::sync::atomic::Ordering;
-    const SENTINEL: usize = usize::MAX;
-
-    let cached = slot.load(Ordering::Relaxed);
-    if cached == SENTINEL {
-        return 0;
-    }
-    if cached != 0 {
-        return cached;
-    }
-
-    let addr = unsafe { get_proc_address(module, name) }.unwrap_or(0);
-    slot.store(if addr == 0 { SENTINEL } else { addr }, Ordering::Relaxed);
-    if addr == 0 { 0 } else { addr }
+    load_cached_symbol(slot, || {
+        unsafe { get_proc_address(module, name) }.unwrap_or(0)
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -380,30 +443,19 @@ pub fn resolve_windows_symbol_in_modules_abs(
     name: &[u8],
     slot: &std::sync::atomic::AtomicUsize,
 ) -> usize {
-    use std::sync::atomic::Ordering;
-    const SENTINEL: usize = usize::MAX;
-
-    let cached = slot.load(Ordering::Relaxed);
-    if cached == SENTINEL {
-        return 0;
-    }
-    if cached != 0 {
-        return cached;
-    }
-
-    let mut addr = 0;
-    for &module in modules {
-        if module == 0 {
-            continue;
+    load_cached_symbol(slot, || {
+        let mut addr = 0;
+        for &module in modules {
+            if module == 0 {
+                continue;
+            }
+            addr = unsafe { get_proc_address(module, name) }.unwrap_or(0);
+            if addr != 0 {
+                break;
+            }
         }
-        addr = unsafe { get_proc_address(module, name) }.unwrap_or(0);
-        if addr != 0 {
-            break;
-        }
-    }
-
-    slot.store(if addr == 0 { SENTINEL } else { addr }, Ordering::Relaxed);
-    if addr == 0 { 0 } else { addr }
+        addr
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -448,20 +500,7 @@ pub unsafe fn dylib_resolve_sym(_name: &[u8]) -> Option<usize> {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub fn resolve_dylib_symbol_abs(name: &[u8], slot: &std::sync::atomic::AtomicUsize) -> usize {
-    use std::sync::atomic::Ordering;
-    const SENTINEL: usize = usize::MAX;
-
-    let cached = slot.load(Ordering::Relaxed);
-    if cached == SENTINEL {
-        return 0;
-    }
-    if cached != 0 {
-        return cached;
-    }
-
-    let addr = unsafe { dylib_resolve_sym(name) }.unwrap_or(0);
-    slot.store(if addr == 0 { SENTINEL } else { addr }, Ordering::Relaxed);
-    if addr == 0 { 0 } else { addr }
+    load_cached_symbol(slot, || unsafe { dylib_resolve_sym(name) }.unwrap_or(0))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -523,124 +562,4 @@ pub unsafe fn android_dlsym_geode(name: &[u8]) -> Option<usize> {
 #[cfg(not(target_os = "android"))]
 pub unsafe fn android_dlsym_geode(_name: &[u8]) -> Option<usize> {
     None
-}
-
-// FIXME: move this out of here
-#[cfg(target_os = "windows")]
-pub fn geode_display_factor() -> f32 {
-    use std::sync::atomic::AtomicUsize;
-
-    static SLOT: AtomicUsize = AtomicUsize::new(0);
-    let addr = resolve_windows_symbol_abs(
-        get_geode(),
-        b"?getDisplayFactor@utils@geode@@YAMXZ\0",
-        &SLOT,
-    );
-    if addr == 0 {
-        return 1.0;
-    }
-
-    unsafe {
-        let func: unsafe extern "C" fn() -> f32 = std::mem::transmute(addr);
-        func()
-    }
-}
-// FIXME: move this out of here
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-pub fn geode_display_factor() -> f32 {
-    use std::sync::atomic::AtomicUsize;
-
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        static SLOT: AtomicUsize = AtomicUsize::new(0);
-        let addr = resolve_dylib_symbol_abs(b"_ZN5geode5utils16getDisplayFactorEv\0", &SLOT);
-        if addr != 0 {
-            unsafe {
-                let func: unsafe extern "C" fn() -> f32 = std::mem::transmute(addr);
-                return func();
-            }
-        }
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        static SLOT: AtomicUsize = AtomicUsize::new(0);
-        let addr = android_resolve_symbol_abs(b"_ZN5geode5utils16getDisplayFactorEv\0", &SLOT);
-        if addr != 0 {
-            unsafe {
-                let func: unsafe extern "C" fn() -> f32 = std::mem::transmute(addr);
-                return func();
-            }
-        }
-    }
-
-    1.0
-}
-
-// FIXME: move this out of here
-#[cfg(not(any(
-    target_os = "windows",
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "android"
-)))]
-pub fn geode_display_factor() -> f32 {
-    1.0
-}
-
-// FIXME: move this out of here
-#[cfg(target_os = "windows")]
-pub fn geode_mouse_position() -> crate::cocos::CCPoint {
-    use std::sync::atomic::AtomicUsize;
-
-    static SLOT: AtomicUsize = AtomicUsize::new(0);
-    let addr = resolve_windows_symbol_abs(
-        get_geode(),
-        b"?getMousePos@cocos@geode@@YA?AVCCPoint@cocos2d@@XZ\0",
-        &SLOT,
-    );
-    if addr == 0 {
-        return crate::cocos::CCPoint { x: 0.0, y: 0.0 };
-    }
-
-    unsafe {
-        let mut out = std::mem::MaybeUninit::<crate::cocos::CCPoint>::uninit();
-        let func: unsafe extern "system" fn(*mut crate::cocos::CCPoint) = std::mem::transmute(addr);
-        func(out.as_mut_ptr());
-        out.assume_init()
-    }
-}
-
-// FIXME: move this out of here
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn geode_mouse_position() -> crate::cocos::CCPoint {
-    use std::sync::atomic::AtomicUsize;
-
-    static SLOT: AtomicUsize = AtomicUsize::new(0);
-    let addr = resolve_dylib_symbol_abs(b"_ZN5geode5cocos11getMousePosEv\0", &SLOT);
-    if addr == 0 {
-        return crate::cocos::CCPoint { x: 0.0, y: 0.0 };
-    }
-
-    unsafe {
-        let func: unsafe extern "C" fn() -> crate::cocos::CCPoint = std::mem::transmute(addr);
-        func()
-    }
-}
-
-// FIXME: move this out of here
-#[cfg(target_os = "android")]
-pub fn geode_mouse_position() -> crate::cocos::CCPoint {
-    crate::cocos::CCPoint { x: 0.0, y: 0.0 }
-}
-
-// FIXME: move this out of here
-#[cfg(not(any(
-    target_os = "windows",
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "android"
-)))]
-pub fn geode_mouse_position() -> crate::cocos::CCPoint {
-    crate::cocos::CCPoint { x: 0.0, y: 0.0 }
 }

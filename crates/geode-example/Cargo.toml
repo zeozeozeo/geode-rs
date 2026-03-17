@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 egui_demo_lib = "0.33"
+egui_extras = "0.33"
 geode-egui = { path = "../geode-egui" }
 geode-rs = { path = "../geode-rs" }
 log = "0.4"

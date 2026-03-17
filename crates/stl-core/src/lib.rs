@@ -10,6 +10,7 @@ pub mod containers;
 pub mod gnustl;
 pub mod libcxx;
 pub mod msvc;
+pub mod stl_span;
 
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 pub use libcxx::*;

@@ -77,19 +77,16 @@ pub fn flush_pending_hooks() {
     let pending: Vec<PendingHook> = hooks.lock().unwrap().drain(..).collect();
 
     for hook in pending {
-        unsafe {
-            if let Some(h) = Hook::create(hook.address, hook.detour, &hook.name, hook.convention, 0)
-            {
-                h.enable();
-            } else {
-                #[cfg(not(target_os = "android"))]
-                eprintln!(
-                    "[geode-rs] failed to create hook for address: {:p}",
-                    hook.address
-                );
-                #[cfg(target_os = "android")]
-                crate::loader::android_log(b"flush_pending_hooks: hook FAILED\0");
-            }
+        if let Ok(h) = Hook::create(hook.address, hook.detour, &hook.name, hook.convention, 0) {
+            let _ = h.enable();
+        } else {
+            #[cfg(not(target_os = "android"))]
+            eprintln!(
+                "[geode-rs] failed to create hook for address: {:p}",
+                hook.address
+            );
+            #[cfg(target_os = "android")]
+            crate::loader::android_log(b"flush_pending_hooks: hook FAILED\0");
         }
     }
 }

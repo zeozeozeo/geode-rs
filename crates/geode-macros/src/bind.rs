@@ -185,16 +185,16 @@ fn expand_plain(decl: BindingDecl) -> Result<TokenStream2> {
     for entry in &platforms {
         let cfg = platform_key_to_cfg(&entry.platform)?;
         let sym_lit = LitByteStr::new(&entry.symbol_bytes, entry.symbol_span);
-        let resolver = platform_key_to_resolver(&entry.platform, &sym_lit);
+        let resolver = platform_key_to_resolver(&entry.platform, &sym_lit, &static_name);
         let abi = platform_key_to_abi(&entry.platform);
 
         platform_arms.extend(quote! {
             #[cfg(#cfg)]
             {
-                static #static_name: ::std::sync::OnceLock<::std::option::Option<usize>>
-                    = ::std::sync::OnceLock::new();
-                let addr = *#static_name.get_or_init(|| { #resolver });
-                if let ::std::option::Option::Some(addr) = addr {
+                static #static_name: ::std::sync::atomic::AtomicUsize =
+                    ::std::sync::atomic::AtomicUsize::new(0);
+                let addr = { #resolver };
+                if addr != 0 {
                     let func: unsafe extern #abi fn(#(#arg_types),*) -> #ret_ty =
                         unsafe { ::std::mem::transmute(addr) };
                     return ::std::option::Option::Some(unsafe { func(#(#arg_names),*) });
@@ -243,7 +243,7 @@ fn expand_sret(decl: BindingDecl) -> Result<TokenStream2> {
         let platform_str = entry.platform.to_string();
         let cfg = platform_key_to_cfg(&entry.platform)?;
         let sym_lit = LitByteStr::new(&entry.symbol_bytes, entry.symbol_span);
-        let resolver = platform_key_to_resolver(&entry.platform, &sym_lit);
+        let resolver = platform_key_to_resolver(&entry.platform, &sym_lit, &static_name);
 
         let is_aarch64 = matches!(
             platform_str.as_str(),
@@ -251,12 +251,12 @@ fn expand_sret(decl: BindingDecl) -> Result<TokenStream2> {
         );
 
         let addr_resolve = quote! {
-            static #static_name: ::std::sync::OnceLock<::std::option::Option<usize>>
-                = ::std::sync::OnceLock::new();
-            let addr = match *#static_name.get_or_init(|| { #resolver }) {
-                ::std::option::Option::Some(a) => a,
-                ::std::option::Option::None => return ::std::option::Option::None,
-            };
+            static #static_name: ::std::sync::atomic::AtomicUsize =
+                ::std::sync::atomic::AtomicUsize::new(0);
+            let addr = { #resolver };
+            if addr == 0 {
+                return ::std::option::Option::None;
+            }
         };
 
         let abi = platform_key_to_abi(&entry.platform);
@@ -410,21 +410,13 @@ fn platform_key_to_cfg(ident: &Ident) -> Result<TokenStream2> {
     Ok(ts)
 }
 
-fn platform_key_to_resolver(ident: &Ident, sym: &LitByteStr) -> TokenStream2 {
+fn platform_key_to_resolver(ident: &Ident, sym: &LitByteStr, static_name: &Ident) -> TokenStream2 {
     let key = ident.to_string();
     match key.as_str() {
-        "win" | "windows" => quote! {
-            unsafe {
-                let base = crate::base::get_geode();
-                crate::base::get_proc_address(base, #sym)
-            }
+        "win" | "windows" | "mac" | "macos" | "mac_intel" | "imac" | "mac_arm" | "m1" | "ios"
+        | "ios_arm" | "android32" | "android64" | "android" => quote! {
+            crate::base::resolve_symbol(crate::base::SymbolScope::Geode, #sym, &#static_name)
         },
-        "mac" | "macos" | "mac_intel" | "imac" | "mac_arm" | "m1" | "ios" | "ios_arm" => quote! {
-            unsafe { crate::base::dylib_resolve_sym(#sym) }
-        },
-        "android32" | "android64" | "android" => quote! {
-            unsafe { crate::base::android_dlsym_geode(#sym) }
-        },
-        _ => quote!(::std::option::Option::None),
+        _ => quote!(0usize),
     }
 }
