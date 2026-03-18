@@ -508,7 +508,7 @@ fn process_impl_block(content: &str) -> String {
                 brace_depth = brace_depth.saturating_sub(line.matches('}').count());
                 if seen_open_brace && brace_depth == 0 {
                     if !contains_missing_function(&current_method) {
-                        result.push_str(&current_method);
+                        result.push_str(&rewrite_generated_impl_method(&current_method));
                     }
                     in_method = false;
                     current_method.clear();
@@ -528,7 +528,7 @@ fn process_impl_block(content: &str) -> String {
 
             if seen_open_brace && brace_depth == 0 {
                 if !contains_missing_function(&current_method) {
-                    result.push_str(&current_method);
+                    result.push_str(&rewrite_generated_impl_method(&current_method));
                 }
                 in_method = false;
                 current_method.clear();
@@ -559,6 +559,55 @@ fn process_impl_block(content: &str) -> String {
     result = result.replace("XINPUT_STATE", "std::ffi::c_void");
     result = replace_vtable_types(&result);
     result
+}
+
+#[cfg(feature = "bindgen")]
+fn rewrite_generated_impl_method(method: &str) -> String {
+    let method = method
+        .replacen("pub unsafe fn", "pub fn", 1)
+        .replacen("unsafe fn", "fn", 1);
+
+    let Some(body_start) = method.find('{') else {
+        return method;
+    };
+    let Some(body_end) = method.rfind('}') else {
+        return method;
+    };
+
+    let body = &method[body_start + 1..body_end];
+    let body_indent = body
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.chars()
+                .take_while(|ch| ch.is_whitespace())
+                .collect::<String>()
+        })
+        .unwrap_or_else(|| "    ".to_string());
+    let inner_indent = format!("{body_indent}    ");
+
+    let mut rewritten = String::with_capacity(method.len() + 32);
+    rewritten.push_str(&method[..body_start + 1]);
+    rewritten.push('\n');
+    rewritten.push_str(&body_indent);
+    rewritten.push_str("#[allow(unused_unsafe)]\n");
+    rewritten.push_str(&body_indent);
+    rewritten.push_str("unsafe {\n");
+
+    for line in body.lines() {
+        if line.trim().is_empty() {
+            rewritten.push('\n');
+        } else {
+            rewritten.push_str(&inner_indent);
+            rewritten.push_str(line.trim_start());
+            rewritten.push('\n');
+        }
+    }
+
+    rewritten.push_str(&body_indent);
+    rewritten.push_str("}\n");
+    rewritten.push_str(&method[body_end..]);
+    rewritten
 }
 
 #[cfg(feature = "bindgen")]

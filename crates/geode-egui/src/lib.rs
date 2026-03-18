@@ -17,6 +17,8 @@ mod platform;
 pub use egui;
 pub use geode_rs;
 
+use geode_rs::cocos::*;
+
 type UiCallback = dyn FnMut(&egui::Context);
 
 const TOUCH_BEGAN: u32 = 0;
@@ -369,13 +371,13 @@ fn last_frame_info() -> Option<FrameInfo> {
 
 fn current_frame_info() -> Result<FrameInfo, RenderError> {
     unsafe {
-        let director = geode_rs::cocos::CCDirector::sharedDirector();
+        let director = CCDirector::sharedDirector();
         if director.is_null() {
             return Err(RenderError::MissingDirector);
         }
 
         let win_size = (*director).getWinSize();
-        let delta_time = geode_rs::cocos::CCDirector_getDeltaTime(director.cast());
+        let delta_time = CCDirector_getDeltaTime(director.cast());
 
         let points = Vec2::new(win_size.width.max(1.0), win_size.height.max(1.0));
         let win_size_pixels = (*director).getWinSizeInPixels();
@@ -385,9 +387,9 @@ fn current_frame_info() -> Result<FrameInfo, RenderError> {
         ];
 
         if pixels[0] == 0 || pixels[1] == 0 {
-            let view = geode_rs::cocos::CCEGLView::sharedOpenGLView();
+            let view = CCEGLView::sharedOpenGLView();
             if !view.is_null() {
-                let frame_size = geode_rs::cocos::CCEGLViewProtocol_getFrameSize(view.cast());
+                let frame_size = CCEGLViewProtocol_getFrameSize(view.cast());
                 if !frame_size.is_null() {
                     let factor = geode_rs::geode_display_factor().max(1.0);
                     pixels = [
@@ -487,21 +489,21 @@ fn should_capture_keyboard() -> bool {
     should_block_input() || wants_keyboard_input()
 }
 
-fn update_modifiers_from_key_event(key: geode_rs::cocos::enumKeyCodes, pressed: bool) {
+fn update_modifiers_from_key_event(key: enumKeyCodes, pressed: bool) {
     with_input_state(|input| {
         let mut modifiers = input.modifiers;
+        #[allow(non_upper_case_globals)]
         match key {
-            geode_rs::cocos::enumKeyCodes_KEY_Shift
-            | geode_rs::cocos::enumKeyCodes_KEY_LeftShift
-            | geode_rs::cocos::enumKeyCodes_KEY_RightShift => modifiers.shift = pressed,
-            geode_rs::cocos::enumKeyCodes_KEY_Control
-            | geode_rs::cocos::enumKeyCodes_KEY_LeftControl
-            | geode_rs::cocos::enumKeyCodes_KEY_RightControl => modifiers.ctrl = pressed,
-            geode_rs::cocos::enumKeyCodes_KEY_Alt
-            | geode_rs::cocos::enumKeyCodes_KEY_LeftMenu
-            | geode_rs::cocos::enumKeyCodes_KEY_RightMenu => modifiers.alt = pressed,
-            geode_rs::cocos::enumKeyCodes_KEY_LeftWindowsKey
-            | geode_rs::cocos::enumKeyCodes_KEY_RightWindowsKey => {
+            enumKeyCodes_KEY_Shift | enumKeyCodes_KEY_LeftShift | enumKeyCodes_KEY_RightShift => {
+                modifiers.shift = pressed
+            }
+            enumKeyCodes_KEY_Control
+            | enumKeyCodes_KEY_LeftControl
+            | enumKeyCodes_KEY_RightControl => modifiers.ctrl = pressed,
+            enumKeyCodes_KEY_Alt | enumKeyCodes_KEY_LeftMenu | enumKeyCodes_KEY_RightMenu => {
+                modifiers.alt = pressed
+            }
+            enumKeyCodes_KEY_LeftWindowsKey | enumKeyCodes_KEY_RightWindowsKey => {
                 if cfg!(any(target_os = "macos", target_os = "ios")) {
                     modifiers.mac_cmd = pressed;
                 }
@@ -518,86 +520,88 @@ fn update_modifiers_from_key_event(key: geode_rs::cocos::enumKeyCodes, pressed: 
     });
 }
 
-fn cocos_key_to_egui_key(key: geode_rs::cocos::enumKeyCodes) -> Option<Key> {
+fn cocos_key_to_egui_key(key: enumKeyCodes) -> Option<Key> {
+    // rustc bug? why does it make warnings for these when they're in a different crate
+    #[allow(non_upper_case_globals)]
     match key {
-        geode_rs::cocos::enumKeyCodes_KEY_Up => Some(Key::ArrowUp),
-        geode_rs::cocos::enumKeyCodes_KEY_Down => Some(Key::ArrowDown),
-        geode_rs::cocos::enumKeyCodes_KEY_Left => Some(Key::ArrowLeft),
-        geode_rs::cocos::enumKeyCodes_KEY_Right => Some(Key::ArrowRight),
-        geode_rs::cocos::enumKeyCodes_KEY_ArrowUp => Some(Key::ArrowUp),
-        geode_rs::cocos::enumKeyCodes_KEY_ArrowDown => Some(Key::ArrowDown),
-        geode_rs::cocos::enumKeyCodes_KEY_ArrowLeft => Some(Key::ArrowLeft),
-        geode_rs::cocos::enumKeyCodes_KEY_ArrowRight => Some(Key::ArrowRight),
-        geode_rs::cocos::enumKeyCodes_KEY_Escape => Some(Key::Escape),
-        geode_rs::cocos::enumKeyCodes_KEY_Tab => Some(Key::Tab),
-        geode_rs::cocos::enumKeyCodes_KEY_Backspace => Some(Key::Backspace),
-        geode_rs::cocos::enumKeyCodes_KEY_Enter => Some(Key::Enter),
-        geode_rs::cocos::enumKeyCodes_KEY_Space => Some(Key::Space),
-        geode_rs::cocos::enumKeyCodes_KEY_Insert => Some(Key::Insert),
-        geode_rs::cocos::enumKeyCodes_KEY_Delete => Some(Key::Delete),
-        geode_rs::cocos::enumKeyCodes_KEY_Home => Some(Key::Home),
-        geode_rs::cocos::enumKeyCodes_KEY_End => Some(Key::End),
-        geode_rs::cocos::enumKeyCodes_KEY_PageUp => Some(Key::PageUp),
-        geode_rs::cocos::enumKeyCodes_KEY_PageDown => Some(Key::PageDown),
-        geode_rs::cocos::enumKeyCodes_KEY_Apostrophe => Some(Key::Quote),
-        geode_rs::cocos::enumKeyCodes_KEY_OEMComma => Some(Key::Comma),
-        geode_rs::cocos::enumKeyCodes_KEY_OEMMinus => Some(Key::Minus),
-        geode_rs::cocos::enumKeyCodes_KEY_OEMPeriod => Some(Key::Period),
-        geode_rs::cocos::enumKeyCodes_KEY_OEMPlus => Some(Key::Plus),
-        geode_rs::cocos::enumKeyCodes_KEY_Semicolon => Some(Key::Semicolon),
-        geode_rs::cocos::enumKeyCodes_KEY_Slash => Some(Key::Slash),
-        geode_rs::cocos::enumKeyCodes_KEY_GraveAccent => Some(Key::Backtick),
-        geode_rs::cocos::enumKeyCodes_KEY_LeftBracket => Some(Key::OpenBracket),
-        geode_rs::cocos::enumKeyCodes_KEY_Backslash => Some(Key::Backslash),
-        geode_rs::cocos::enumKeyCodes_KEY_RightBracket => Some(Key::CloseBracket),
-        geode_rs::cocos::enumKeyCodes_KEY_Zero => Some(Key::Num0),
-        geode_rs::cocos::enumKeyCodes_KEY_One => Some(Key::Num1),
-        geode_rs::cocos::enumKeyCodes_KEY_Two => Some(Key::Num2),
-        geode_rs::cocos::enumKeyCodes_KEY_Three => Some(Key::Num3),
-        geode_rs::cocos::enumKeyCodes_KEY_Four => Some(Key::Num4),
-        geode_rs::cocos::enumKeyCodes_KEY_Five => Some(Key::Num5),
-        geode_rs::cocos::enumKeyCodes_KEY_Six => Some(Key::Num6),
-        geode_rs::cocos::enumKeyCodes_KEY_Seven => Some(Key::Num7),
-        geode_rs::cocos::enumKeyCodes_KEY_Eight => Some(Key::Num8),
-        geode_rs::cocos::enumKeyCodes_KEY_Nine => Some(Key::Num9),
-        geode_rs::cocos::enumKeyCodes_KEY_A => Some(Key::A),
-        geode_rs::cocos::enumKeyCodes_KEY_B => Some(Key::B),
-        geode_rs::cocos::enumKeyCodes_KEY_C => Some(Key::C),
-        geode_rs::cocos::enumKeyCodes_KEY_D => Some(Key::D),
-        geode_rs::cocos::enumKeyCodes_KEY_E => Some(Key::E),
-        geode_rs::cocos::enumKeyCodes_KEY_F => Some(Key::F),
-        geode_rs::cocos::enumKeyCodes_KEY_G => Some(Key::G),
-        geode_rs::cocos::enumKeyCodes_KEY_H => Some(Key::H),
-        geode_rs::cocos::enumKeyCodes_KEY_I => Some(Key::I),
-        geode_rs::cocos::enumKeyCodes_KEY_J => Some(Key::J),
-        geode_rs::cocos::enumKeyCodes_KEY_K => Some(Key::K),
-        geode_rs::cocos::enumKeyCodes_KEY_L => Some(Key::L),
-        geode_rs::cocos::enumKeyCodes_KEY_M => Some(Key::M),
-        geode_rs::cocos::enumKeyCodes_KEY_N => Some(Key::N),
-        geode_rs::cocos::enumKeyCodes_KEY_O => Some(Key::O),
-        geode_rs::cocos::enumKeyCodes_KEY_P => Some(Key::P),
-        geode_rs::cocos::enumKeyCodes_KEY_Q => Some(Key::Q),
-        geode_rs::cocos::enumKeyCodes_KEY_R => Some(Key::R),
-        geode_rs::cocos::enumKeyCodes_KEY_S => Some(Key::S),
-        geode_rs::cocos::enumKeyCodes_KEY_T => Some(Key::T),
-        geode_rs::cocos::enumKeyCodes_KEY_U => Some(Key::U),
-        geode_rs::cocos::enumKeyCodes_KEY_V => Some(Key::V),
-        geode_rs::cocos::enumKeyCodes_KEY_W => Some(Key::W),
-        geode_rs::cocos::enumKeyCodes_KEY_X => Some(Key::X),
-        geode_rs::cocos::enumKeyCodes_KEY_Y => Some(Key::Y),
-        geode_rs::cocos::enumKeyCodes_KEY_Z => Some(Key::Z),
-        geode_rs::cocos::enumKeyCodes_KEY_F1 => Some(Key::F1),
-        geode_rs::cocos::enumKeyCodes_KEY_F2 => Some(Key::F2),
-        geode_rs::cocos::enumKeyCodes_KEY_F3 => Some(Key::F3),
-        geode_rs::cocos::enumKeyCodes_KEY_F4 => Some(Key::F4),
-        geode_rs::cocos::enumKeyCodes_KEY_F5 => Some(Key::F5),
-        geode_rs::cocos::enumKeyCodes_KEY_F6 => Some(Key::F6),
-        geode_rs::cocos::enumKeyCodes_KEY_F7 => Some(Key::F7),
-        geode_rs::cocos::enumKeyCodes_KEY_F8 => Some(Key::F8),
-        geode_rs::cocos::enumKeyCodes_KEY_F9 => Some(Key::F9),
-        geode_rs::cocos::enumKeyCodes_KEY_F10 => Some(Key::F10),
-        geode_rs::cocos::enumKeyCodes_KEY_F11 => Some(Key::F11),
-        geode_rs::cocos::enumKeyCodes_KEY_F12 => Some(Key::F12),
+        enumKeyCodes_KEY_Up => Some(Key::ArrowUp),
+        enumKeyCodes_KEY_Down => Some(Key::ArrowDown),
+        enumKeyCodes_KEY_Left => Some(Key::ArrowLeft),
+        enumKeyCodes_KEY_Right => Some(Key::ArrowRight),
+        enumKeyCodes_KEY_ArrowUp => Some(Key::ArrowUp),
+        enumKeyCodes_KEY_ArrowDown => Some(Key::ArrowDown),
+        enumKeyCodes_KEY_ArrowLeft => Some(Key::ArrowLeft),
+        enumKeyCodes_KEY_ArrowRight => Some(Key::ArrowRight),
+        enumKeyCodes_KEY_Escape => Some(Key::Escape),
+        enumKeyCodes_KEY_Tab => Some(Key::Tab),
+        enumKeyCodes_KEY_Backspace => Some(Key::Backspace),
+        enumKeyCodes_KEY_Enter => Some(Key::Enter),
+        enumKeyCodes_KEY_Space => Some(Key::Space),
+        enumKeyCodes_KEY_Insert => Some(Key::Insert),
+        enumKeyCodes_KEY_Delete => Some(Key::Delete),
+        enumKeyCodes_KEY_Home => Some(Key::Home),
+        enumKeyCodes_KEY_End => Some(Key::End),
+        enumKeyCodes_KEY_PageUp => Some(Key::PageUp),
+        enumKeyCodes_KEY_PageDown => Some(Key::PageDown),
+        enumKeyCodes_KEY_Apostrophe => Some(Key::Quote),
+        enumKeyCodes_KEY_OEMComma => Some(Key::Comma),
+        enumKeyCodes_KEY_OEMMinus => Some(Key::Minus),
+        enumKeyCodes_KEY_OEMPeriod => Some(Key::Period),
+        enumKeyCodes_KEY_OEMPlus => Some(Key::Plus),
+        enumKeyCodes_KEY_Semicolon => Some(Key::Semicolon),
+        enumKeyCodes_KEY_Slash => Some(Key::Slash),
+        enumKeyCodes_KEY_GraveAccent => Some(Key::Backtick),
+        enumKeyCodes_KEY_LeftBracket => Some(Key::OpenBracket),
+        enumKeyCodes_KEY_Backslash => Some(Key::Backslash),
+        enumKeyCodes_KEY_RightBracket => Some(Key::CloseBracket),
+        enumKeyCodes_KEY_Zero => Some(Key::Num0),
+        enumKeyCodes_KEY_One => Some(Key::Num1),
+        enumKeyCodes_KEY_Two => Some(Key::Num2),
+        enumKeyCodes_KEY_Three => Some(Key::Num3),
+        enumKeyCodes_KEY_Four => Some(Key::Num4),
+        enumKeyCodes_KEY_Five => Some(Key::Num5),
+        enumKeyCodes_KEY_Six => Some(Key::Num6),
+        enumKeyCodes_KEY_Seven => Some(Key::Num7),
+        enumKeyCodes_KEY_Eight => Some(Key::Num8),
+        enumKeyCodes_KEY_Nine => Some(Key::Num9),
+        enumKeyCodes_KEY_A => Some(Key::A),
+        enumKeyCodes_KEY_B => Some(Key::B),
+        enumKeyCodes_KEY_C => Some(Key::C),
+        enumKeyCodes_KEY_D => Some(Key::D),
+        enumKeyCodes_KEY_E => Some(Key::E),
+        enumKeyCodes_KEY_F => Some(Key::F),
+        enumKeyCodes_KEY_G => Some(Key::G),
+        enumKeyCodes_KEY_H => Some(Key::H),
+        enumKeyCodes_KEY_I => Some(Key::I),
+        enumKeyCodes_KEY_J => Some(Key::J),
+        enumKeyCodes_KEY_K => Some(Key::K),
+        enumKeyCodes_KEY_L => Some(Key::L),
+        enumKeyCodes_KEY_M => Some(Key::M),
+        enumKeyCodes_KEY_N => Some(Key::N),
+        enumKeyCodes_KEY_O => Some(Key::O),
+        enumKeyCodes_KEY_P => Some(Key::P),
+        enumKeyCodes_KEY_Q => Some(Key::Q),
+        enumKeyCodes_KEY_R => Some(Key::R),
+        enumKeyCodes_KEY_S => Some(Key::S),
+        enumKeyCodes_KEY_T => Some(Key::T),
+        enumKeyCodes_KEY_U => Some(Key::U),
+        enumKeyCodes_KEY_V => Some(Key::V),
+        enumKeyCodes_KEY_W => Some(Key::W),
+        enumKeyCodes_KEY_X => Some(Key::X),
+        enumKeyCodes_KEY_Y => Some(Key::Y),
+        enumKeyCodes_KEY_Z => Some(Key::Z),
+        enumKeyCodes_KEY_F1 => Some(Key::F1),
+        enumKeyCodes_KEY_F2 => Some(Key::F2),
+        enumKeyCodes_KEY_F3 => Some(Key::F3),
+        enumKeyCodes_KEY_F4 => Some(Key::F4),
+        enumKeyCodes_KEY_F5 => Some(Key::F5),
+        enumKeyCodes_KEY_F6 => Some(Key::F6),
+        enumKeyCodes_KEY_F7 => Some(Key::F7),
+        enumKeyCodes_KEY_F8 => Some(Key::F8),
+        enumKeyCodes_KEY_F9 => Some(Key::F9),
+        enumKeyCodes_KEY_F10 => Some(Key::F10),
+        enumKeyCodes_KEY_F11 => Some(Key::F11),
+        enumKeyCodes_KEY_F12 => Some(Key::F12),
         _ => None,
     }
 }
@@ -678,7 +682,7 @@ pub fn push_scroll(delta: Vec2) {
     });
 }
 
-pub fn cocos_point_to_egui(point: geode_rs::cocos::CCPoint) -> Option<Pos2> {
+pub fn cocos_point_to_egui(point: CCPoint) -> Option<Pos2> {
     let frame = last_frame_info().or_else(|| current_frame_info().ok())?;
     cocos_point_to_egui_with_frame(point, frame)
 }
@@ -691,10 +695,7 @@ pub fn frame_pixels_to_egui(position: Pos2) -> Option<Pos2> {
     ))
 }
 
-fn cocos_point_to_egui_with_frame(
-    point: geode_rs::cocos::CCPoint,
-    frame: FrameInfo,
-) -> Option<Pos2> {
+fn cocos_point_to_egui_with_frame(point: CCPoint, frame: FrameInfo) -> Option<Pos2> {
     if point.x == 0.0 && point.y == 0.0 {
         return None;
     }
@@ -705,17 +706,13 @@ fn cocos_point_to_egui_with_frame(
     ))
 }
 
-pub fn push_cocos_pointer_moved(point: geode_rs::cocos::CCPoint) {
+pub fn push_cocos_pointer_moved(point: CCPoint) {
     if let Some(position) = cocos_point_to_egui(point) {
         push_event(Event::PointerMoved(position));
     }
 }
 
-pub fn push_cocos_pointer_button(
-    point: geode_rs::cocos::CCPoint,
-    button: PointerButton,
-    pressed: bool,
-) {
+pub fn push_cocos_pointer_button(point: CCPoint, button: PointerButton, pressed: bool) {
     if let Some(position) = cocos_point_to_egui(point) {
         push_event(Event::PointerButton {
             pos: position,
@@ -783,13 +780,13 @@ pub fn paint_frame() {
 
 #[doc(hidden)]
 pub unsafe fn dispatch_insert_text_hook(
-    this: *mut geode_rs::cocos::CCIMEDispatcher,
+    this: &mut geode_rs::classes::CCIMEDispatcher,
     text: *const c_char,
     len: i32,
     key: geode_rs::cocos::enumKeyCodes,
 ) {
     if !is_visible_internal() {
-        geode_rs::cocos::CCIMEDispatcher_dispatchInsertText(this, text, len, key);
+        this.dispatch_insert_text(text, len, key);
         return;
     }
 
@@ -802,14 +799,14 @@ pub unsafe fn dispatch_insert_text_hook(
     }
 
     if !should_capture_keyboard() {
-        geode_rs::cocos::CCIMEDispatcher_dispatchInsertText(this, text, len, key);
+        this.dispatch_insert_text(text, len, key);
     }
 }
 
 #[doc(hidden)]
-pub unsafe fn dispatch_delete_backward_hook(this: *mut geode_rs::cocos::CCIMEDispatcher) {
+pub fn dispatch_delete_backward_hook(this: &mut geode_rs::classes::CCIMEDispatcher) {
     if !is_visible_internal() {
-        geode_rs::cocos::CCIMEDispatcher_dispatchDeleteBackward(this);
+        this.dispatch_delete_backward();
         return;
     }
 
@@ -820,29 +817,22 @@ pub unsafe fn dispatch_delete_backward_hook(this: *mut geode_rs::cocos::CCIMEDis
     }
 
     if !should_capture_keyboard() {
-        geode_rs::cocos::CCIMEDispatcher_dispatchDeleteBackward(this);
+        this.dispatch_delete_backward();
     }
 }
 
 #[doc(hidden)]
-pub unsafe fn dispatch_keyboard_msg_hook(
-    this: *mut geode_rs::cocos::CCKeyboardDispatcher,
+pub fn dispatch_keyboard_msg_hook(
+    this: &mut geode_rs::classes::CCKeyboardDispatcher,
     key: geode_rs::cocos::enumKeyCodes,
     is_key_down: bool,
     is_key_repeat: bool,
     time: f64,
 ) -> bool {
-    let _ = this;
     update_modifiers_from_key_event(key, is_key_down);
 
     if !is_visible_internal() {
-        return geode_rs::cocos::CCKeyboardDispatcher_dispatchKeyboardMSG(
-            this,
-            key,
-            is_key_down,
-            is_key_repeat,
-            time,
-        );
+        return this.dispatch_keyboard_msg(key, is_key_down, is_key_repeat, time);
     }
 
     let should_eat_input = should_capture_keyboard();
@@ -855,24 +845,18 @@ pub unsafe fn dispatch_keyboard_msg_hook(
     if should_eat_input {
         false
     } else {
-        geode_rs::cocos::CCKeyboardDispatcher_dispatchKeyboardMSG(
-            this,
-            key,
-            is_key_down,
-            is_key_repeat,
-            time,
-        )
+        this.dispatch_keyboard_msg(key, is_key_down, is_key_repeat, time)
     }
 }
 
 #[doc(hidden)]
-pub unsafe fn dispatch_scroll_msg_hook(
-    this: *mut geode_rs::cocos::CCMouseDispatcher,
+pub fn dispatch_scroll_msg_hook(
+    this: &mut geode_rs::classes::CCMouseDispatcher,
     y: f32,
     x: f32,
 ) -> bool {
     if !is_visible_internal() {
-        return geode_rs::cocos::CCMouseDispatcher_dispatchScrollMSG(this, y, x);
+        return this.dispatch_scroll_msg(y, x);
     }
 
     push_scroll(Vec2::new(x * SCROLL_MULTIPLIER, -y * SCROLL_MULTIPLIER));
@@ -880,31 +864,43 @@ pub unsafe fn dispatch_scroll_msg_hook(
     if should_capture_pointer() {
         true
     } else {
-        geode_rs::cocos::CCMouseDispatcher_dispatchScrollMSG(this, y, x)
+        this.dispatch_scroll_msg(y, x)
     }
 }
 
 #[doc(hidden)]
 pub unsafe fn touch_dispatch_hook(
-    this: *mut geode_rs::cocos::CCTouchDispatcher,
-    touches: *mut geode_rs::cocos::CCSet,
+    this: &mut geode_rs::classes::CCTouchDispatcher,
+    touches: *mut geode_rs::classes::CCSet,
     event: *mut geode_rs::cocos::CCEvent,
     ty: u32,
 ) {
-    if !is_visible_internal() || touches.is_null() {
-        geode_rs::cocos::CCTouchDispatcher_touches(this, touches, event, ty);
+    if touches.is_null() {
+        geode_rs::cocos::CCTouchDispatcher_touches(
+            this as *mut _ as *mut geode_rs::cocos::CCTouchDispatcher,
+            touches as *mut geode_rs::cocos::CCSet,
+            event as *mut geode_rs::cocos::CCEvent,
+            ty,
+        );
         return;
     }
 
-    let touch = geode_rs::cocos::CCSet_anyObject(touches).cast::<geode_rs::cocos::CCTouch>();
+    let touches = &mut *touches;
+
+    if !is_visible_internal() {
+        this.touches(touches, event, ty);
+        return;
+    }
+
+    let touch = touches.any_object().cast::<geode_rs::classes::CCTouch>();
     if touch.is_null() {
-        geode_rs::cocos::CCTouchDispatcher_touches(this, touches, event, ty);
+        this.touches(touches, event, ty);
         return;
     }
 
-    let point = geode_rs::cocos::CCTouch_getLocation(touch);
+    let point = geode_rs::cocos::CCTouch_getLocation(touch as *mut geode_rs::cocos::CCTouch);
     if geode_rs::geode_mouse_position().x == 0.0 && geode_rs::geode_mouse_position().y == 0.0 {
-        push_cocos_pointer_moved(geode_rs::cocos::CCPoint {
+        push_cocos_pointer_moved(CCPoint {
             x: point.x,
             y: point.y,
         });
@@ -919,13 +915,13 @@ pub unsafe fn touch_dispatch_hook(
             _ => {}
         }
         if ty == TOUCH_MOVED {
-            geode_rs::cocos::CCTouchDispatcher_touches(this, touches, event, TOUCH_CANCELLED);
+            this.touches(touches, event, TOUCH_CANCELLED);
         }
     } else {
         if ty != TOUCH_MOVED {
             push_cocos_pointer_button(point, PointerButton::Primary, false);
         }
-        geode_rs::cocos::CCTouchDispatcher_touches(this, touches, event, ty);
+        this.touches(touches, event, ty);
     }
 }
 
@@ -937,10 +933,10 @@ macro_rules! install_render_hooks {
             use geode_egui::geode_rs::classes::CCEGLView;
 
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCEGLView)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCEGLView)]
             struct GeodeEguiSwapBuffersHook;
 
-            #[geode_egui::geode_rs::modify(CCEGLView)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCEGLView)]
             impl GeodeEguiSwapBuffersHook {
                 fn swap_buffers(&mut self, this: &mut CCEGLView) {
                     geode_egui::paint_frame();
@@ -954,10 +950,10 @@ macro_rules! install_render_hooks {
             use geode_egui::geode_rs::classes::CCDirector;
 
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCDirector)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCDirector)]
             struct GeodeEguiDrawSceneHook;
 
-            #[geode_egui::geode_rs::modify(CCDirector)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCDirector)]
             impl GeodeEguiDrawSceneHook {
                 fn draw_scene(&mut self, this: &mut CCDirector) {
                     this.draw_scene();
@@ -973,15 +969,15 @@ macro_rules! install_input_hooks {
     () => {
         mod __geode_egui_input_hooks {
             use geode_egui::geode_rs::classes::{
-                CCIMEDispatcher, CCKeyboardDispatcher, CCTouchDispatcher,
+                CCIMEDispatcher, CCKeyboardDispatcher, CCMouseDispatcher, CCSet, CCTouchDispatcher,
             };
-            use geode_egui::geode_rs::cocos::{CCEvent, CCSet, enumKeyCodes};
+            use geode_egui::geode_rs::cocos::{CCEvent, enumKeyCodes};
 
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCIMEDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCIMEDispatcher)]
             struct GeodeEguiImeHook;
 
-            #[geode_egui::geode_rs::modify(CCIMEDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCIMEDispatcher)]
             impl GeodeEguiImeHook {
                 fn dispatch_insert_text(
                     &mut self,
@@ -991,31 +987,22 @@ macro_rules! install_input_hooks {
                     key: enumKeyCodes,
                 ) {
                     unsafe {
-                        geode_egui::dispatch_insert_text_hook(
-                            this as *mut _ as *mut geode_egui::geode_rs::cocos::CCIMEDispatcher,
-                            text,
-                            len,
-                            key,
-                        );
+                        geode_egui::dispatch_insert_text_hook(this, text, len, key);
                     }
                 }
 
                 fn dispatch_delete_backward(&mut self, this: &mut CCIMEDispatcher) {
-                    unsafe {
-                        geode_egui::dispatch_delete_backward_hook(
-                            this as *mut _ as *mut geode_egui::geode_rs::cocos::CCIMEDispatcher,
-                        );
-                    }
+                    geode_egui::dispatch_delete_backward_hook(this);
                 }
             }
 
             #[cfg(not(target_os = "ios"))]
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCKeyboardDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCKeyboardDispatcher)]
             struct GeodeEguiKeyboardHook;
 
             #[cfg(not(target_os = "ios"))]
-            #[geode_egui::geode_rs::modify(CCKeyboardDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCKeyboardDispatcher)]
             impl GeodeEguiKeyboardHook {
                 fn dispatch_keyboard_msg(
                     &mut self,
@@ -1025,29 +1012,22 @@ macro_rules! install_input_hooks {
                     is_key_repeat: bool,
                     time: f64,
                 ) -> bool {
-                    unsafe {
-                        geode_egui::dispatch_keyboard_msg_hook(
-                            this as *mut _
-                                as *mut geode_egui::geode_rs::cocos::CCKeyboardDispatcher,
-                            key,
-                            is_key_down,
-                            is_key_repeat,
-                            time,
-                        )
-                    }
+                    geode_egui::dispatch_keyboard_msg_hook(
+                        this,
+                        key,
+                        is_key_down,
+                        is_key_repeat,
+                        time,
+                    )
                 }
             }
-
-            #[cfg(not(target_os = "ios"))]
-            use geode_egui::geode_rs::classes::CCMouseDispatcher;
-
             #[cfg(not(target_os = "ios"))]
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCMouseDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCMouseDispatcher)]
             struct GeodeEguiMouseHook;
 
             #[cfg(not(target_os = "ios"))]
-            #[geode_egui::geode_rs::modify(CCMouseDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCMouseDispatcher)]
             impl GeodeEguiMouseHook {
                 fn dispatch_scroll_msg(
                     &mut self,
@@ -1055,21 +1035,15 @@ macro_rules! install_input_hooks {
                     y: f32,
                     x: f32,
                 ) -> bool {
-                    unsafe {
-                        geode_egui::dispatch_scroll_msg_hook(
-                            this as *mut _ as *mut geode_egui::geode_rs::cocos::CCMouseDispatcher,
-                            y,
-                            x,
-                        )
-                    }
+                    geode_egui::dispatch_scroll_msg_hook(this, y, x)
                 }
             }
 
             #[derive(Default)]
-            #[geode_egui::geode_rs::modify(CCTouchDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCTouchDispatcher)]
             struct GeodeEguiTouchHook;
 
-            #[geode_egui::geode_rs::modify(CCTouchDispatcher)]
+            #[geode_egui::geode_rs::modify(geode_egui::geode_rs::classes::CCTouchDispatcher)]
             impl GeodeEguiTouchHook {
                 fn touches(
                     &mut self,
@@ -1079,12 +1053,7 @@ macro_rules! install_input_hooks {
                     ty: u32,
                 ) {
                     unsafe {
-                        geode_egui::touch_dispatch_hook(
-                            this as *mut _ as *mut geode_egui::geode_rs::cocos::CCTouchDispatcher,
-                            touches as *mut geode_egui::geode_rs::cocos::CCSet,
-                            event as *mut geode_egui::geode_rs::cocos::CCEvent,
-                            ty,
-                        );
+                        geode_egui::touch_dispatch_hook(this, touches, event, ty);
                     }
                 }
             }

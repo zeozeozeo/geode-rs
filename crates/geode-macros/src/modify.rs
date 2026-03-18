@@ -1,16 +1,16 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{FnArg, Ident, Item, ItemImpl, ItemStruct, Result, Type, TypeReference};
+use syn::{FnArg, Ident, Item, ItemImpl, ItemStruct, Path, Result, Type, TypeReference};
 
 struct ModifyArgs {
-    class_name: Ident,
+    class_path: Path,
     unique: bool,
 }
 
 impl Parse for ModifyArgs {
     fn parse(input: ParseStream) -> Result<Self> {
-        let class_name: Ident = input.parse()?;
+        let class_path: Path = input.parse()?;
         let mut unique = false;
 
         if input.peek(syn::Token![,]) {
@@ -23,7 +23,7 @@ impl Parse for ModifyArgs {
             }
         }
 
-        Ok(Self { class_name, unique })
+        Ok(Self { class_path, unique })
     }
 }
 
@@ -33,9 +33,9 @@ pub fn expand_modify(args: TokenStream2, item: TokenStream2) -> Result<TokenStre
 
     match parsed {
         Item::Struct(struct_item) => {
-            expand_modify_struct(parsed_args.class_name, parsed_args.unique, struct_item)
+            expand_modify_struct(parsed_args.class_path, parsed_args.unique, struct_item)
         }
-        Item::Impl(impl_item) => expand_modify_impl(parsed_args.class_name, impl_item),
+        Item::Impl(impl_item) => expand_modify_impl(parsed_args.class_path, impl_item),
         _ => Err(syn::Error::new_spanned(
             parsed,
             "modify attribute can only be applied to structs or impl blocks",
@@ -44,7 +44,7 @@ pub fn expand_modify(args: TokenStream2, item: TokenStream2) -> Result<TokenStre
 }
 
 fn expand_modify_struct(
-    class_name: Ident,
+    class_path: Path,
     unique: bool,
     struct_item: ItemStruct,
 ) -> Result<TokenStream2> {
@@ -72,17 +72,17 @@ fn expand_modify_struct(
             ::geode_rs::modify::ModifyStorage::new();
 
         impl #struct_name {
-            pub fn get(this: *mut ::geode_rs::classes::#class_name) -> Option<&'static mut Self> {
+            pub fn get(this: *mut #class_path) -> Option<&'static mut Self> {
                 #storage_ident.get(#key_expr)
             }
 
-            pub fn get_or_default(this: *mut ::geode_rs::classes::#class_name) -> &'static mut Self {
+            pub fn get_or_default(this: *mut #class_path) -> &'static mut Self {
                 #storage_ident.get_or_default(#key_expr, || Self {
                     #(#field_names: Default::default()),*
                 })
             }
 
-            pub fn free(this: *mut ::geode_rs::classes::#class_name) {
+            pub fn free(this: *mut #class_path) {
                 #storage_ident.remove(#key_expr);
             }
         }
@@ -91,7 +91,7 @@ fn expand_modify_struct(
     Ok(expanded)
 }
 
-fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenStream2> {
+fn expand_modify_impl(class_path: Path, impl_block: ItemImpl) -> Result<TokenStream2> {
     let struct_name = if let syn::Type::Path(path) = &*impl_block.self_ty {
         path.path
             .segments
@@ -122,6 +122,11 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
             let addr_const = format_ident!("{}_ADDR", method_name_str.to_uppercase());
 
             let convention = quote!(::geode_rs::CallingConvention::Default);
+            let class_name = class_path
+                .segments
+                .last()
+                .map(|s| s.ident.clone())
+                .ok_or_else(|| syn::Error::new_spanned(&class_path, "invalid class path"))?;
 
             let detour_func_name = format_ident!(
                 "__detour_{}_{}",
@@ -137,7 +142,7 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
             let (detour_params, call_args) = build_detour_params_and_call_args(
                 &method.sig.inputs,
                 &struct_name,
-                &class_name,
+                &class_path,
                 has_self_param,
             );
 
@@ -159,10 +164,10 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
 
             detour_functions.push(detour_func);
 
-            let class_name_inner = class_name.clone();
+            let class_path_inner = class_path.clone();
             let hook_registration = quote! {
                 unsafe {
-                    let addr = ::geode_rs::classes::#class_name_inner::#addr_const();
+                    let addr = #class_path_inner::#addr_const();
                     if addr == 0 {
                         #[cfg(target_os = "android")]
                         ::geode_rs::loader::android_log(
@@ -203,13 +208,13 @@ fn expand_modify_impl(class_name: Ident, impl_block: ItemImpl) -> Result<TokenSt
 fn build_detour_params_and_call_args(
     inputs: &syn::punctuated::Punctuated<FnArg, syn::Token![,]>,
     struct_name: &Ident,
-    class_name: &Ident,
+    class_path: &Path,
     has_self_param: bool,
 ) -> (TokenStream2, TokenStream2) {
     let mut detour_params: Vec<TokenStream2> = Vec::new();
     let mut call_args: Vec<TokenStream2> = Vec::new();
 
-    detour_params.push(quote!(this: *mut ::geode_rs::classes::#class_name));
+    detour_params.push(quote!(this: *mut #class_path));
 
     if has_self_param {
         call_args.push(quote!(#struct_name::get_or_default(this)));
