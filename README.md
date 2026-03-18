@@ -15,7 +15,6 @@ An effort to port the Geode client mod API to Rust (WIP).
 
 ## TODO
 
-- Safe cocos bindings
 - Inherit cocos classes?
 - android32 (untested, compiles), iOS, MacOS
 - ~~Automatically generate loader bindings? (long shot)~~ semi-done?
