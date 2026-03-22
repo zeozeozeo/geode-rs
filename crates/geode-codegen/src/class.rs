@@ -4,12 +4,10 @@ use broma_rs::{Class, FieldInner, FunctionType, Root};
 
 use crate::function::generate_member_function;
 use crate::member::generate_field;
-use crate::platform::Platform;
 
 pub fn generate_class(
     class: &Class,
     root: &Root,
-    platform: Platform,
     generate_docs: bool,
     generate_prelude: bool,
     import_classes: bool,
@@ -75,11 +73,11 @@ pub fn generate_class(
     }
 
     output.push_str("}\n\n");
-    output.push_str(&generate_impl_block(class, platform, generate_docs));
+    output.push_str(&generate_impl_block(class, generate_docs));
     output
 }
 
-fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -> String {
+fn generate_impl_block(class: &Class, generate_docs: bool) -> String {
     let mut output = String::new();
     let class_name = serialize_name(&class.name);
 
@@ -120,7 +118,6 @@ fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -
                 func,
                 &class.name,
                 class_name,
-                platform,
                 generate_docs,
                 suffix.as_deref(),
                 true,
@@ -161,7 +158,6 @@ fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -
                 func,
                 &class.name,
                 class_name,
-                platform,
                 generate_docs,
                 suffix.as_deref(),
                 true,
@@ -202,7 +198,6 @@ fn generate_impl_block(class: &Class, platform: Platform, generate_docs: bool) -
                 func,
                 &class.name,
                 class_name,
-                platform,
                 generate_docs,
                 suffix.as_deref(),
                 true,

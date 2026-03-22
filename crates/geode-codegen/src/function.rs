@@ -91,7 +91,6 @@ pub fn generate_member_function(
     func: &FunctionBindField,
     full_class_name: &str,
     class_name: &str,
-    platform: Platform,
     generate_docs: bool,
     overload_suffix: Option<&str>,
     is_impl: bool,
@@ -127,12 +126,7 @@ pub fn generate_member_function(
         ref_args.push((arg_name, ref_ty));
     }
 
-    let addr = get_platform_address(&func.binds, platform);
-    let linked = func.prototype.attributes.links;
-
-    if addr == INLINE
-        || (addr == UNSPECIFIED && !can_resolve_symbol(platform, linked, full_class_name, func))
-    {
+    if !should_generate_member_function(full_class_name, func) {
         return format!("// {}::{} - inline or unspecified\n", class_name, name);
     }
 
@@ -328,6 +322,11 @@ fn generate_platform_branch(
     let mut output = String::new();
     output.push_str(&format!("    #[cfg({})]", platform.cfg_condition()));
 
+    if addr == INLINE {
+        output.push_str(" { return 0; }\n");
+        return output;
+    }
+
     if addr > 0 {
         output.push_str(&format!(
             " {{ return {}; }}\n",
@@ -370,6 +369,20 @@ fn generate_platform_branch(
     }
 
     output
+}
+
+fn should_generate_member_function(full_class_name: &str, func: &FunctionBindField) -> bool {
+    Platform::all().iter().copied().any(|platform| {
+        let addr = get_platform_address(&func.binds, platform);
+        addr > 0
+            || (addr == UNSPECIFIED
+                && can_resolve_symbol(
+                    platform,
+                    func.prototype.attributes.links,
+                    full_class_name,
+                    func,
+                ))
+    })
 }
 
 fn absolute_address_expr(platform: Platform, class_name: &str, addr: usize) -> String {

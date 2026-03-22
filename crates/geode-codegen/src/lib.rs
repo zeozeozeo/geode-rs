@@ -62,8 +62,7 @@ pub fn generate(config: Config) -> Result<()> {
                 base_module_name.clone()
             };
 
-            let output =
-                class::generate_class(class, &merged, platform, config.generate_docs, true, true);
+            let output = class::generate_class(class, &merged, config.generate_docs, true, true);
             let file_path = classes_dir.join(format!("{module_name}.rs"));
             std::fs::write(&file_path, output)?;
             class_modules.push((module_name, class::serialize_name(&class.name).to_string()));
@@ -76,8 +75,7 @@ pub fn generate(config: Config) -> Result<()> {
         let mut first = true;
 
         for class in &merged.classes {
-            let output =
-                class::generate_class(class, &merged, platform, config.generate_docs, first, false);
+            let output = class::generate_class(class, &merged, config.generate_docs, first, false);
             classes_output.push_str(&output);
             classes_output.push('\n');
             first = false;
