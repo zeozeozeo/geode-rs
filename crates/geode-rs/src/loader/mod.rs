@@ -5,14 +5,16 @@
 )]
 
 mod raw;
+mod types;
 
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::sync::OnceLock;
 
 use crate::CallingConvention;
-use crate::stl::{StlOptional, StlSharedPtr, StlSpan, StlString, StlVector};
+use crate::stl::{StlOptional, StlPath, StlSharedPtr, StlSpan, StlString, StlVector};
 use crate::tulip::{HandlerMetadata, HookMetadata, TulipConvention};
+pub use types::*;
 
 pub type LoaderResult<T> = Result<T, String>;
 pub type ByteSpan = StlSpan<u8>;
@@ -364,6 +366,44 @@ impl Loader {
     pub fn game_version(&self) -> Option<String> {
         unsafe { raw::loader_get_game_version(self.ptr) }.map(|value| stl_string_to_string(&value))
     }
+
+    pub fn is_forward_compat_mode(&self) -> bool {
+        unsafe { raw::loader_is_forward_compat_mode(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn save_data(&self) {
+        let _ = unsafe { raw::loader_save_data(self.ptr) };
+    }
+
+    pub fn load_data(&self) {
+        let _ = unsafe { raw::loader_load_data(self.ptr) };
+    }
+
+    pub fn version(&self) -> Option<VersionInfo> {
+        unsafe { raw::loader_get_version(self.ptr) }
+    }
+
+    pub fn min_mod_version(&self) -> Option<VersionInfo> {
+        unsafe { raw::loader_min_mod_version(self.ptr) }
+    }
+
+    pub fn max_mod_version(&self) -> Option<VersionInfo> {
+        unsafe { raw::loader_max_mod_version(self.ptr) }
+    }
+
+    pub fn is_mod_version_supported(&self, version: &VersionInfo) -> bool {
+        unsafe { raw::loader_is_mod_version_supported(self.ptr, version) }.unwrap_or(false)
+    }
+
+    pub fn load_problems(&self) -> Vec<LoadProblem> {
+        unsafe { raw::loader_get_load_problems(self.ptr) }
+            .map(|value| value.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn get_launch_flag(&self, name: &str) -> bool {
+        unsafe { raw::loader_get_launch_flag(self.ptr, name.into()) }.unwrap_or(false)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -397,12 +437,68 @@ impl Mod {
             .unwrap_or_default()
     }
 
+    pub fn developers(&self) -> Vec<String> {
+        unsafe { raw::mod_get_developers(self.ptr) }
+            .map(string_vec_to_vec)
+            .unwrap_or_default()
+    }
+
+    pub fn description(&self) -> Option<String> {
+        unsafe { raw::mod_get_description(self.ptr) }.and_then(optional_string_to_option)
+    }
+
+    pub fn details(&self) -> Option<String> {
+        unsafe { raw::mod_get_details(self.ptr) }.and_then(optional_string_to_option)
+    }
+
+    pub fn package_path(&self) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_package_path(self.ptr) }.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn version(&self) -> Option<VersionInfo> {
+        unsafe { raw::mod_get_version(self.ptr) }
+    }
+
     pub fn is_loaded(&self) -> bool {
         unsafe { raw::mod_is_loaded(self.ptr) }.unwrap_or(false)
     }
 
     pub fn is_currently_loading(&self) -> bool {
         unsafe { raw::mod_is_currently_loading(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn is_or_will_be_enabled(&self) -> bool {
+        unsafe { raw::mod_is_or_will_be_enabled(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn is_internal(&self) -> bool {
+        unsafe { raw::mod_is_internal(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn needs_early_load(&self) -> bool {
+        unsafe { raw::mod_needs_early_load(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn metadata(&self) -> Option<ModMetadata> {
+        unsafe { raw::mod_get_metadata(self.ptr) }
+            .and_then(|value| unsafe { value.as_ref() })
+            .cloned()
+    }
+
+    pub fn temp_dir(&self) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_temp_dir(self.ptr) }.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn binary_path(&self) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_binary_path(self.ptr) }.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn resources_dir(&self) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_resources_dir(self.ptr) }.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn dependency_settings_for(&self, dependency_id: &str) -> Option<MatJsonValue> {
+        unsafe { raw::mod_get_dependency_settings_for(self.ptr, dependency_id.into()) }
     }
 
     pub fn has_settings(&self) -> bool {
@@ -471,6 +567,32 @@ impl Mod {
         unsafe { result.into_rust() }
     }
 
+    pub fn save_data(&self) -> LoaderResult<()> {
+        let result = unsafe { raw::mod_save_data_result(self.ptr) }
+            .ok_or_else(|| "missing geode::Mod::saveData".to_owned())?;
+        unsafe { result.into_rust() }
+    }
+
+    pub fn load_data(&self) -> LoaderResult<()> {
+        let result = unsafe { raw::mod_load_data_result(self.ptr) }
+            .ok_or_else(|| "missing geode::Mod::loadData".to_owned())?;
+        unsafe { result.into_rust() }
+    }
+
+    pub fn save_dir(&self) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_save_dir(self.ptr) }.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn config_dir(&self, create: bool) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_config_dir(self.ptr, create) }
+            .map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn persistent_dir(&self, create: bool) -> Option<std::path::PathBuf> {
+        unsafe { raw::mod_get_persistent_dir(self.ptr, create) }
+            .map(|value| stl_path_to_path_buf(&value))
+    }
+
     pub fn launch_argument_name(&self, name: &str) -> Option<String> {
         unsafe { raw::mod_get_launch_argument_name(self.ptr, name.into()) }
             .map(|value| stl_string_to_string(&value))
@@ -489,6 +611,89 @@ impl Mod {
     pub fn get_launch_argument(&self, name: &str) -> Option<String> {
         unsafe { raw::mod_get_launch_argument(self.ptr, name.into()) }
             .and_then(optional_string_to_option)
+    }
+
+    pub fn get_launch_flag(&self, name: &str) -> bool {
+        unsafe { raw::mod_get_launch_flag(self.ptr, name.into()) }.unwrap_or(false)
+    }
+
+    pub fn uninstall(&self, delete_save_data: bool) -> LoaderResult<()> {
+        let result = unsafe { raw::mod_uninstall(self.ptr, delete_save_data) }
+            .ok_or_else(|| "missing geode::Mod::uninstall".to_owned())?;
+        unsafe { result.into_rust() }
+    }
+
+    pub fn is_uninstalled(&self) -> bool {
+        unsafe { raw::mod_is_uninstalled(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn requested_action(&self) -> ModRequestedAction {
+        unsafe { raw::mod_get_requested_action(self.ptr) }.unwrap_or_default()
+    }
+
+    pub fn depends(&self, id: &str) -> bool {
+        unsafe { raw::mod_depends(self.ptr, id.into()) }.unwrap_or(false)
+    }
+
+    pub fn has_unresolved_dependencies(&self) -> bool {
+        unsafe { raw::mod_has_unresolved_dependencies(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn has_unresolved_incompatibilities(&self) -> bool {
+        unsafe { raw::mod_has_unresolved_incompatibilities(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn expand_sprite_name(&self, name: &str) -> Option<String> {
+        unsafe { raw::mod_expand_sprite_name(self.ptr, name.into()) }
+            .map(|value| stl_string_to_string(&value))
+    }
+
+    pub fn runtime_info(&self) -> Option<MatJsonValue> {
+        unsafe { raw::mod_get_runtime_info(self.ptr) }
+    }
+
+    pub fn is_logging_enabled(&self) -> bool {
+        unsafe { raw::mod_is_logging_enabled(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn set_logging_enabled(&self, enabled: bool) {
+        let _ = unsafe { raw::mod_set_logging_enabled(self.ptr, enabled) };
+    }
+
+    pub fn log_level(&self) -> Severity {
+        unsafe { raw::mod_get_log_level(self.ptr) }.unwrap_or_default()
+    }
+
+    pub fn set_log_level(&self, level: Severity) {
+        let _ = unsafe { raw::mod_set_log_level(self.ptr, level) };
+    }
+
+    pub fn targets_outdated_version(&self) -> Option<LoadProblem> {
+        unsafe { raw::mod_targets_outdated_version(self.ptr) }.and_then(Option::from)
+    }
+
+    pub fn failed_to_load(&self) -> Option<LoadProblem> {
+        unsafe { raw::mod_failed_to_load(self.ptr) }.and_then(Option::from)
+    }
+
+    pub fn load_problem(&self) -> Option<LoadProblem> {
+        unsafe { raw::mod_get_load_problem(self.ptr) }.and_then(Option::from)
+    }
+
+    pub fn should_load(&self) -> bool {
+        unsafe { raw::mod_should_load(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn load_priority(&self) -> i32 {
+        unsafe { raw::mod_get_load_priority(self.ptr) }.unwrap_or_default()
+    }
+
+    pub fn is_pinned(&self) -> bool {
+        unsafe { raw::mod_is_pinned(self.ptr) }.unwrap_or(false)
+    }
+
+    pub fn set_pinned(&self, pinned: bool) {
+        let _ = unsafe { raw::mod_set_pinned(self.ptr, pinned) };
     }
 
     pub fn settings_manager(&self) -> Option<ModSettingsManager> {
@@ -591,8 +796,107 @@ impl ModSettingsManager {
     }
 }
 
+pub mod dirs {
+    use super::{raw, stl_path_to_path_buf};
+    use std::path::PathBuf;
+
+    fn map_path(value: Option<crate::stl::StlPath>) -> Option<PathBuf> {
+        value.map(|value| stl_path_to_path_buf(&value))
+    }
+
+    pub fn game_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_game_dir() })
+    }
+    pub fn save_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_save_dir() })
+    }
+    pub fn geode_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_geode_dir() })
+    }
+    pub fn geode_save_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_geode_save_dir() })
+    }
+    pub fn geode_resources_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_geode_resources_dir() })
+    }
+    pub fn geode_log_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_geode_log_dir() })
+    }
+    pub fn temp_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_temp_dir() })
+    }
+    pub fn mods_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_mods_dir() })
+    }
+    pub fn mods_save_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_mods_save_dir() })
+    }
+    pub fn mod_runtime_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_mod_runtime_dir() })
+    }
+    pub fn mod_config_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_mod_config_dir() })
+    }
+    pub fn index_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_index_dir() })
+    }
+    pub fn crashlogs_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_crashlogs_dir() })
+    }
+    pub fn mod_persistent_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_mod_persistent_dir() })
+    }
+    pub fn resources_dir() -> Option<PathBuf> {
+        map_path(unsafe { raw::dirs_get_resources_dir() })
+    }
+}
+
+pub mod log {
+    use super::{raw, stl_path_to_path_buf};
+    use std::path::PathBuf;
+
+    pub fn current_log_path() -> Option<PathBuf> {
+        unsafe { raw::log_get_current_log_path() }
+            .and_then(|value| unsafe { value.as_ref() })
+            .map(stl_path_to_path_buf)
+    }
+}
+
 fn stl_string_to_string(value: &StlString) -> String {
     value.to_string()
+}
+
+fn stl_path_to_path_buf(value: &StlPath) -> std::path::PathBuf {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+
+        std::ffi::OsString::from_wide(value.as_slice()).into()
+    }
+
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::ffi::OsStringExt;
+
+        std::ffi::OsString::from_vec(value.to_string_lossy().into_bytes()).into()
+    }
+}
+
+fn path_to_stl_path(path: &std::path::Path) -> StlPath {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        let wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+        StlPath::from_wide(&wide)
+    }
+
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::ffi::OsStrExt;
+
+        StlPath::from_str(&String::from_utf8_lossy(path.as_os_str().as_bytes()))
+    }
 }
 
 fn optional_string_to_option(value: StlOptional<StlString>) -> Option<String> {

@@ -570,7 +570,7 @@ class AppDelegate : cocos2d::CCApplication, cocos2d::CCSceneDelegate {
     bool m_ios;
     bool m_unk0eb;
     bool m_unk0ec;
-    bool m_unk0ed;
+    bool m_needsSafeArea;
     float m_saveTime;
 }
 
@@ -6051,6 +6051,7 @@ class GameManager : GManager {
     bool m_unkBool7;
     bool m_unkBool8;
     geode::SeedValueRSV m_hasRP;
+    bool m_hasDRP;
     bool m_canGetLevelSaveData;
     int m_resolution;
     int m_texQuality;
@@ -6094,6 +6095,7 @@ class GameManager : GManager {
     bool m_shouldResetShader;
     cocos2d::CCPoint m_practicePos;
     float m_practiceOpacity;
+    int m_unk664;
 }
 
 [[link(android)]]
@@ -8951,6 +8953,7 @@ class GJGameState {
     int m_unkUint5;
     int m_unkUint6;
     int m_unkUint7;
+    int m_unkUint8; // i don't know
     GameObject* m_lastActivatedPortal1;
     GameObject* m_lastActivatedPortal2;
     cocos2d::CCPoint m_cameraPosition;
@@ -14104,7 +14107,7 @@ class PlatformToolbox {
     static void reportAchievementWithID(char const* key, int percent) = imac 0x4c3e10, m1 0x42378c, ios 0x16b830;
     static void reportLoadingFinished() = win inline, imac 0x4c3d30, m1 0x423748, ios 0x16b7fc;
     static void resizeWindow(float width, float height) = win inline, imac 0x4c4b80, m1 0x4242cc, ios 0x16bc70;
-    static void saveAndEncryptStringToFile(gd::string& str, char const* dirPath, char const* fileName) = imac 0x4c3ec0, m1 0x4237fc, ios 0x16b924;
+    static void saveAndEncryptStringToFile(gd::string& str, char const* fileName, char const* dirPath) = imac 0x4c3ec0, m1 0x4237fc, ios 0x16b924;
     static void sendMail(char const* title, char const* content, char const* address) = win inline, imac 0x4c3e50, m1 0x4237c0, ios 0x16b838;
     static void setBlockBackButton(bool block) = win inline, imac 0x4c3d90, m1 0x423760, ios inline;
     static void setKeyboardState(bool state) = win inline, imac 0x4c3d70, m1 0x423758, ios 0x16b80c;
@@ -14809,7 +14812,7 @@ class PlayerObject : GameObject, AnimatedSpriteDelegate {
     double m_maybeReverseAcceleration;
     float m_xVelocityRelated2;
     bool m_isDashing;
-    int m_unk9e8;
+    int m_dashFireFrame;
     int m_groundObjectMaterial;
     float m_vehicleSize;
     float m_playerSpeed;

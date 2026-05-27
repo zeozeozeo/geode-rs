@@ -1,17 +1,24 @@
 #[cfg(windows)]
-pub use stl_core::msvc::{Variant2, optional, shared_ptr, span, string, string_view, vector};
+pub use stl_core::msvc::{
+    Variant2, Variant3, optional, path, shared_ptr, span, string, string_view, vector, wstring,
+};
 
 #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-pub use stl_core::libcxx::{Variant2, optional, shared_ptr, span, string, string_view, vector};
+pub use stl_core::libcxx::{
+    Variant2, Variant3, optional, path, shared_ptr, span, string, string_view, vector,
+};
 
 pub use stl_core::containers::{map, set, unordered_map, unordered_set};
+pub use stl_core::pair;
 
 pub type StlString = string;
 pub type StlStringView = string_view;
+pub type StlPath = path;
 pub type StlOptional<T> = optional<T>;
 pub type StlSpan<T> = span<T>;
 pub type StlVector<T> = vector<T>;
 pub type StlSharedPtr<T> = shared_ptr<T>;
+pub type StlPair<T, U> = pair<T, U>;
 pub type StlSet<T> = set<T>;
 pub type StlMap<K, V> = map<K, V>;
 pub type StlUnorderedMap<K, V> = unordered_map<K, V>;

@@ -6,6 +6,7 @@ pub mod types {
 }
 
 pub mod containers;
+pub mod stl_pair;
 
 pub mod gnustl;
 pub mod libcxx;
@@ -19,3 +20,4 @@ pub use msvc::*;
 
 pub use containers::{map, set, unordered_map, unordered_set};
 pub use libc;
+pub use stl_pair::pair;
