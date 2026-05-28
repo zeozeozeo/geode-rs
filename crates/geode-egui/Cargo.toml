@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-egui = "0.33.3"
-egui_glow = { version = "0.33.3", default-features = false }
+egui = "0.34.3"
+egui_glow = { version = "0.34.3", default-features = false }
 geode-rs = { path = "../geode-rs" }
 log = "0.4"
 

@@ -306,16 +306,15 @@ impl Backend {
         viewport.native_pixels_per_point = Some(frame.pixels_per_point);
         viewport.inner_rect = Some(Rect::from_min_size(Pos2::ZERO, frame.egui_size));
 
-        let mut callback = self.callback.as_deref_mut();
-        let full_output = self.ctx.run(raw_input, |ctx| {
-            if let Some(callback) = callback.as_deref_mut() {
-                callback(ctx);
-            }
-        });
+        self.ctx.begin_pass(raw_input);
+        if let Some(callback) = self.callback.as_deref_mut() {
+            callback(&self.ctx);
+        }
+        let full_output = self.ctx.end_pass();
         {
             let mut input = lock_input_state();
-            input.wants_pointer_input = self.ctx.wants_pointer_input();
-            input.wants_keyboard_input = self.ctx.wants_keyboard_input();
+            input.wants_pointer_input = self.ctx.egui_wants_pointer_input();
+            input.wants_keyboard_input = self.ctx.egui_wants_keyboard_input();
         }
         let clipped_primitives = self
             .ctx
@@ -714,6 +713,7 @@ pub fn push_scroll(delta: Vec2) {
     push_event(Event::MouseWheel {
         unit: MouseWheelUnit::Point,
         delta,
+        phase: egui::TouchPhase::Move,
         modifiers: modifiers(),
     });
 }

@@ -7,8 +7,8 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-egui_demo_lib = "0.33"
-egui_extras = "0.33"
+egui_demo_lib = "0.34.3"
+egui_extras = "0.34.3"
 geode-egui = { path = "../geode-egui" }
 geode-rs = { path = "../geode-rs" }
 log = "0.4"

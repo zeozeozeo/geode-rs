@@ -352,6 +352,9 @@ fn show_demo_ui(
         });
 
     if *show_demos {
-        demos.ui(ctx);
+        egui::Window::new("egui demo")
+            .default_pos(egui::pos2(560.0, 24.0))
+            .default_size((520.0, 420.0))
+            .show(ctx, |ui| demos.ui(ui));
     }
 }
