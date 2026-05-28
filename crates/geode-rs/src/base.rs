@@ -177,25 +177,17 @@ mod android {
 
     pub fn get_geode() -> usize {
         *GEODE_BASE.get_or_init(|| unsafe {
-            let handle = dlopen(
-                b"libGeode.so\0".as_ptr() as *const std::os::raw::c_char,
-                RTLD_LAZY | RTLD_NOLOAD,
-            );
+            let handle = get_geode_handle();
             if handle.is_null() {
                 return 0;
             }
 
             let sym = dlsym(
                 handle,
-                b"geodeImplicitEntry\0".as_ptr() as *const std::os::raw::c_char,
+                b"_ZN5geode6Loader3getEv\0".as_ptr() as *const std::os::raw::c_char,
             );
-            if sym.is_null() {
-                dlclose(handle);
-                return 0;
-            }
-
             let mut info: Dl_info = std::mem::zeroed();
-            if dladdr(sym, &mut info) != 0 {
+            if !sym.is_null() && dladdr(sym, &mut info) != 0 {
                 info.dli_fbase as usize
             } else {
                 0
@@ -229,6 +221,27 @@ mod android {
         handle as *mut std::os::raw::c_void
     }
 
+    fn get_geode_handle() -> *mut std::os::raw::c_void {
+        static GEODE_HANDLE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        let handle = *GEODE_HANDLE.get_or_init(|| unsafe {
+            for name in [
+                b"libGeode.so\0".as_slice(),
+                b"Geode.android64.so\0".as_slice(),
+                b"Geode.android32.so\0".as_slice(),
+            ] {
+                let handle = dlopen(
+                    name.as_ptr() as *const std::os::raw::c_char,
+                    RTLD_LAZY | RTLD_NOLOAD,
+                );
+                if !handle.is_null() {
+                    return handle as usize;
+                }
+            }
+            0
+        });
+        handle as *mut std::os::raw::c_void
+    }
+
     pub fn android_resolve_symbol_abs(
         sym_bytes: &[u8],
         slot: &std::sync::atomic::AtomicUsize,
@@ -254,6 +267,51 @@ mod android {
             let sym = dlsym(handle, sym_bytes.as_ptr() as *const std::os::raw::c_char);
             sym as usize
         };
+
+        if addr == 0 {
+            slot.store(SENTINEL, Ordering::Relaxed);
+            return 0;
+        }
+
+        slot.store(addr, Ordering::Relaxed);
+        addr
+    }
+
+    pub fn android_resolve_geode_symbol_abs(
+        sym_bytes: &[u8],
+        slot: &std::sync::atomic::AtomicUsize,
+    ) -> usize {
+        use std::sync::atomic::Ordering;
+        const SENTINEL: usize = usize::MAX;
+
+        let cached = slot.load(Ordering::Relaxed);
+        if cached == SENTINEL {
+            return 0;
+        }
+        if cached != 0 {
+            return cached;
+        }
+
+        if sym_bytes.is_empty() || sym_bytes[0] == 0 {
+            slot.store(SENTINEL, Ordering::Relaxed);
+            return 0;
+        }
+
+        let handle = get_geode_handle();
+        let mut addr = if handle.is_null() {
+            0
+        } else {
+            unsafe { dlsym(handle, sym_bytes.as_ptr() as *const std::os::raw::c_char) as usize }
+        };
+
+        if addr == 0 {
+            addr = unsafe {
+                dlsym(
+                    std::ptr::null_mut(),
+                    sym_bytes.as_ptr() as *const std::os::raw::c_char,
+                ) as usize
+            };
+        }
 
         if addr == 0 {
             slot.store(SENTINEL, Ordering::Relaxed);
@@ -325,7 +383,10 @@ pub use macos::{get, get_geode};
 pub use ios::{get, get_geode};
 
 #[cfg(target_os = "android")]
-pub use android::{android_resolve_sym, android_resolve_symbol_abs, get, get_geode};
+pub use android::{
+    android_resolve_geode_symbol_abs, android_resolve_sym, android_resolve_symbol_abs, get,
+    get_geode,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SymbolScope {
@@ -335,6 +396,31 @@ pub enum SymbolScope {
     Extensions,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SymbolResolveError {
+    pub owner: &'static str,
+    pub function: &'static str,
+}
+
+impl SymbolResolveError {
+    pub const fn new(owner: &'static str, function: &'static str) -> Self {
+        Self { owner, function }
+    }
+}
+
+impl std::fmt::Display for SymbolResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.owner.is_empty() {
+            write!(f, "failed to resolve {}", self.function)
+        } else {
+            write!(f, "failed to resolve {}::{}", self.owner, self.function)
+        }
+    }
+}
+
+impl std::error::Error for SymbolResolveError {}
+
+#[allow(dead_code)]
 fn load_cached_symbol(
     slot: &std::sync::atomic::AtomicUsize,
     resolve: impl FnOnce() -> usize,
@@ -406,9 +492,10 @@ pub fn resolve_symbol(
     #[cfg(target_os = "android")]
     {
         match scope {
-            SymbolScope::Process | SymbolScope::Geode => {
+            SymbolScope::Process => {
                 return android_resolve_symbol_abs(name, slot);
             }
+            SymbolScope::Geode => return android_resolve_geode_symbol_abs(name, slot),
             SymbolScope::Cocos => return android_resolve_symbol_abs(name, slot),
             SymbolScope::Extensions => return 0,
         }

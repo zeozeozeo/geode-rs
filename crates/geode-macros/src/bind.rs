@@ -261,7 +261,9 @@ fn expand_sret(decl: BindingDecl) -> Result<TokenStream2> {
 
         let abi = platform_key_to_abi(&entry.platform);
         let is_windows = matches!(entry.platform.to_string().as_str(), "win" | "windows");
-        let call = if is_aarch64 {
+        let call = if is_aarch64 && uses_direct_aarch64_return(&out_ty) {
+            emit_direct_return_call(&arg_names, &arg_types, &out_ty, &abi)
+        } else if is_aarch64 {
             emit_aarch64_sret_call(&arg_names)
         } else if is_windows && is_method {
             emit_win64_method_sret_call(&arg_names, &arg_types, &out_ty)
@@ -289,6 +291,34 @@ fn expand_sret(decl: BindingDecl) -> Result<TokenStream2> {
             ::std::option::Option::None
         }
     })
+}
+
+fn uses_direct_aarch64_return(ty: &Type) -> bool {
+    let Type::Path(path) = ty else {
+        return false;
+    };
+
+    path.path.segments.last().is_some_and(|segment| {
+        matches!(
+            segment.ident.to_string().as_str(),
+            "ZStringView" | "StlStringView"
+        )
+    })
+}
+
+fn emit_direct_return_call(
+    arg_names: &[&Ident],
+    arg_types: &[&Type],
+    out_ty: &Type,
+    abi: &TokenStream2,
+) -> TokenStream2 {
+    quote! {
+        unsafe {
+            let func: unsafe extern #abi fn(#(#arg_types),*) -> #out_ty =
+                ::std::mem::transmute(addr);
+            out.as_mut_ptr().write(func(#(#arg_names),*));
+        }
+    }
 }
 
 fn emit_aarch64_sret_call(arg_names: &[&Ident]) -> TokenStream2 {

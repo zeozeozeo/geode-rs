@@ -448,6 +448,45 @@ pub type GdUnorderedSet<T> = stl::StlUnorderedSet<T>;
 
     if use_cocos_bindgen {
         output.push_str("pub use super::cocos::*;\n");
+        output.push_str(
+            r#"
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CCSortableObject {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CCTableViewDataSource {
+    _private: [u8; 0],
+}
+
+pub type CCControlEvent = c_int;
+pub type SEL_CCControlHandler = Option<unsafe extern "C" fn(*mut c_void, CCControlEvent)>;
+pub type EditBoxInputFlag = c_int;
+pub type EditBoxInputMode = c_int;
+pub type KeyboardReturnType = c_int;
+pub type CCTableViewVerticalFillOrder = c_int;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HSV {
+    pub h: c_float,
+    pub s: c_float,
+    pub v: c_float,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RGBA {
+    pub r: c_float,
+    pub g: c_float,
+    pub b: c_float,
+    pub a: c_float,
+}
+"#,
+        );
     } else {
         output.push_str("#[repr(C)]\n#[derive(Debug, Clone, Copy, Default)]\npub struct CCPoint {\n    pub x: c_float,\n    pub y: c_float,\n}\n\n");
         output.push_str("#[repr(C)]\n#[derive(Debug, Clone, Copy, Default)]\npub struct CCSize {\n    pub width: c_float,\n    pub height: c_float,\n}\n\n");

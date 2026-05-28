@@ -90,6 +90,46 @@ fn encode_class_path(current_class: &str, ty: &str) -> String {
     }
 }
 
+fn encode_record_path(current_class: &str, ty: &str) -> String {
+    let (short, namespace) = split_qualified(ty);
+    let record_short = if short.starts_with("cc") {
+        format!("_{short}")
+    } else {
+        short.to_string()
+    };
+    let record_ty = if let Some(namespace) = namespace {
+        format!("{namespace}::{record_short}")
+    } else {
+        record_short
+    };
+
+    encode_class_path(current_class, &record_ty)
+}
+
+fn record_kind(ty: &str) -> char {
+    let (short, _) = split_qualified(ty);
+    if short.starts_with("cc") || short.starts_with('_') {
+        'U'
+    } else {
+        'V'
+    }
+}
+
+fn is_record_type(ty: &str) -> bool {
+    let (short, _) = split_qualified(ty);
+    short.starts_with("CC")
+        || short.starts_with("cc")
+        || short.starts_with("_cc")
+        || short.starts_with("tCC")
+        || short.starts_with("sCC")
+        || matches!(short, "HSV" | "RGBA")
+}
+
+fn encode_record_value_type(current_class: &str, ty: &str) -> String {
+    let path = encode_record_path(current_class, ty);
+    format!("{}{path}", record_kind(ty))
+}
+
 fn encode_enum_type(current_class: &str, ty: &str) -> String {
     let (current_namespace_short, current_namespace) = split_qualified(current_class);
     let _ = current_namespace_short;
@@ -111,9 +151,23 @@ fn encode_pointer_type(current_class: &str, ty: &str) -> Option<String> {
         return Some(format!("PE{cv}{code}"));
     }
 
-    let path = encode_class_path(current_class, inner);
+    let path = encode_record_path(current_class, inner);
     let cv = if is_const { 'B' } else { 'A' };
-    Some(format!("PE{cv}V{path}"))
+    Some(format!("PE{cv}{}{path}", record_kind(inner)))
+}
+
+fn encode_reference_type(current_class: &str, ty: &str) -> Option<String> {
+    let inner = ty.strip_suffix('&')?.trim();
+    let (inner, is_const) = strip_const(inner);
+
+    if let Some(code) = primitive_code(inner) {
+        let cv = if is_const { 'B' } else { 'A' };
+        return Some(format!("AE{cv}{code}"));
+    }
+
+    let path = encode_record_path(current_class, inner);
+    let cv = if is_const { 'B' } else { 'A' };
+    Some(format!("AE{cv}{}{path}", record_kind(inner)))
 }
 
 fn encode_value_type(current_class: &str, ty: &str, allow_enum: bool) -> Option<String> {
@@ -126,8 +180,16 @@ fn encode_value_type(current_class: &str, ty: &str, allow_enum: bool) -> Option<
         return Some(pointer);
     }
 
+    if let Some(reference) = encode_reference_type(current_class, ty) {
+        return Some(reference);
+    }
+
     if let Some(code) = primitive_code(ty) {
         return Some(code.to_string());
+    }
+
+    if is_record_type(ty) {
+        return Some(encode_record_value_type(current_class, ty));
     }
 
     if allow_enum {
@@ -139,7 +201,7 @@ fn encode_value_type(current_class: &str, ty: &str, allow_enum: bool) -> Option<
 
 fn encode_arg_type(current_class: &str, ty: &str, seen: &mut Vec<String>) -> Option<String> {
     let encoded = encode_value_type(current_class, ty, true)?;
-    if encoded == "_N"
+    if encoded.len() > 1
         && let Some(index) = seen.iter().position(|seen_ty| seen_ty == &encoded)
         && index < 10
     {
@@ -150,7 +212,17 @@ fn encode_arg_type(current_class: &str, ty: &str, seen: &mut Vec<String>) -> Opt
 }
 
 fn encode_return_type(current_class: &str, ty: &str) -> Option<String> {
-    encode_value_type(current_class, ty, false)
+    let encoded = encode_value_type(current_class, ty, false)?;
+
+    let (ty, _) = strip_const(ty);
+    if primitive_code(ty).is_none()
+        && encode_pointer_type(current_class, ty).is_none()
+        && encode_reference_type(current_class, ty).is_none()
+    {
+        return Some(format!("?A{encoded}"));
+    }
+
+    Some(encoded)
 }
 
 pub fn generate_windows_symbol(class_name: &str, func: &FunctionBindField) -> Option<String> {
@@ -176,6 +248,8 @@ pub fn generate_windows_symbol(class_name: &str, func: &FunctionBindField) -> Op
 
     if let FunctionType::Normal = decl.fn_type {
         symbol.push_str(&encode_return_type(class_name, &decl.ret.name)?);
+    } else {
+        symbol.push('@');
     }
 
     if decl.args.is_empty() {
@@ -195,7 +269,7 @@ pub fn generate_windows_symbol(class_name: &str, func: &FunctionBindField) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
-    use broma_rs::{Arg, MemberFunctionProto, Type};
+    use broma_rs::{Arg, FunctionType, MemberFunctionProto, Type};
 
     fn arg(name: &str, ty: &str) -> Arg {
         Arg {
@@ -218,6 +292,85 @@ mod tests {
         assert_eq!(
             generate_windows_symbol("cocos2d::CCDirector", &func).as_deref(),
             Some("?drawScene@CCDirector@cocos2d@@QEAAXXZ")
+        );
+    }
+
+    #[test]
+    fn mangles_constructor() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "CCLayerColor".into(),
+                ret: Type::new("void"),
+                fn_type: FunctionType::Constructor,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_windows_symbol("cocos2d::CCLayerColor", &func).as_deref(),
+            Some("??0CCLayerColor@cocos2d@@QEAA@XZ")
+        );
+    }
+
+    #[test]
+    fn mangles_virtual_destructor() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "~CCLayerColor".into(),
+                ret: Type::new("void"),
+                fn_type: FunctionType::Destructor,
+                is_virtual: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_windows_symbol("cocos2d::CCLayerColor", &func).as_deref(),
+            Some("??1CCLayerColor@cocos2d@@UEAA@XZ")
+        );
+    }
+
+    #[test]
+    fn mangles_static_function_with_cocos_struct_reference() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "create".into(),
+                ret: Type::new("cocos2d::CCLayerColor*"),
+                is_static: true,
+                args: vec![
+                    arg("color", "cocos2d::ccColor4B const&"),
+                    arg("width", "float"),
+                    arg("height", "float"),
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_windows_symbol("cocos2d::CCLayerColor", &func).as_deref(),
+            Some("?create@CCLayerColor@cocos2d@@SAPEAV12@AEBU_ccColor4B@2@MM@Z")
+        );
+    }
+
+    #[test]
+    fn mangles_repeated_pointer_args_with_back_reference() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "create".into(),
+                ret: Type::new("cocos2d::CCLabelBMFont*"),
+                is_static: true,
+                args: vec![arg("str", "char const*"), arg("font", "char const*")],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_windows_symbol("cocos2d::CCLabelBMFont", &func).as_deref(),
+            Some("?create@CCLabelBMFont@cocos2d@@SAPEAV12@PEBD0@Z")
         );
     }
 
@@ -323,6 +476,23 @@ mod tests {
         assert_eq!(
             generate_windows_symbol("cocos2d::CCDirector", &func).as_deref(),
             Some("?sharedDirector@CCDirector@cocos2d@@SAPEAV12@XZ")
+        );
+    }
+
+    #[test]
+    fn mangles_record_return() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "getWinSize".into(),
+                ret: Type::new("cocos2d::CCSize"),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_windows_symbol("cocos2d::CCDirector", &func).as_deref(),
+            Some("?getWinSize@CCDirector@cocos2d@@QEAA?AVCCSize@2@XZ")
         );
     }
 }

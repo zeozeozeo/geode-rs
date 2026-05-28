@@ -1,8 +1,91 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use geode_egui::egui;
-use geode_rs::classes::*;
-use geode_rs::*;
+use geode_rs::classes::PlayLayer;
+use geode_rs::classes::{
+    CCDirector, CCLabelBMFont, CCLayer, CCLayerColor, CCMenu, CCMenuItemFont, MenuLayer,
+};
+use geode_rs::inherit::Obj;
+use geode_rs::loader::Mod;
+use geode_rs::types::{CCPoint, ccColor4B};
+use geode_rs::{geode_main, inherit, modify, spr};
 
 geode_egui::install_hooks!();
+
+static RUST_POPUP_SHOWN: AtomicBool = AtomicBool::new(false);
+
+#[inherit(CCLayer)]
+struct RustPopup {}
+
+impl RustPopup {
+    fn create() -> Obj<Self> {
+        let mut popup =
+            Obj::from_non_null(Self::try_alloc_uninit().expect("failed to allocate RustPopup"));
+        popup.cc_layer_ctor();
+        Self::init_fields(popup.as_non_null());
+        assert!(popup.init_popup(), "RustPopup::init_popup failed");
+        Self::autorelease(popup.as_non_null());
+        popup
+    }
+
+    fn init_popup(&mut self) -> bool {
+        if !self.init() {
+            return false;
+        }
+
+        let background_color = ccColor4B {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 170,
+        };
+
+        let mut background = CCLayerColor::create_2(&background_color, 310.0, 170.0);
+        let mut title = CCLabelBMFont::create_1("Rust Cocos Popup", "bigFont.fnt");
+        let mut body =
+            CCLabelBMFont::create_1("A Cocos class inherited and built in Rust.", "bigFont.fnt");
+        let mut menu = CCMenu::create();
+        let mut close = CCMenuItemFont::create("OK");
+
+        background.set_position(&CCPoint {
+            x: -155.0,
+            y: -85.0,
+        });
+        title.set_position(&CCPoint { x: 0.0, y: 40.0 });
+        body.set_position(&CCPoint { x: 0.0, y: 8.0 });
+        menu.set_position(&CCPoint { x: 0.0, y: 0.0 });
+        close.set_position(&CCPoint { x: 0.0, y: -62.0 });
+
+        title.set_scale(0.65);
+        body.set_scale(0.38);
+        close.set_scale(0.8);
+
+        self.add_child(&mut background);
+        self.add_child(&mut title);
+        self.add_child(&mut body);
+        self.add_child(&mut menu);
+        menu.add_child(&mut close);
+
+        true
+    }
+}
+
+fn show_rust_popup_once(parent: &mut MenuLayer) {
+    if RUST_POPUP_SHOWN.load(Ordering::SeqCst) {
+        return;
+    }
+
+    let mut popup = RustPopup::create();
+    let mut director = CCDirector::shared_director();
+    let size = director.get_win_size();
+    popup.set_position(&CCPoint {
+        x: size.width * 0.5,
+        y: size.height * 0.5,
+    });
+    parent.add_child_2(&mut popup, 1000, 0);
+
+    RUST_POPUP_SHOWN.store(true, Ordering::SeqCst);
+}
 
 #[geode_main]
 fn main() {
@@ -17,6 +100,7 @@ fn main() {
     simple_logger::SimpleLogger::new().init().unwrap();
 
     log_settings();
+    let _sprite_name = spr!("MySprite.png");
 
     let mut demos = egui_demo_lib::DemoWindows::default();
     let mut show_demos = false;
@@ -43,6 +127,7 @@ impl MyMenuLayer {
 
         self.my_custom_field = 67;
         log::debug!("MenuLayer::init hooked from Rust!");
+        show_rust_popup_once(this);
 
         true
     }

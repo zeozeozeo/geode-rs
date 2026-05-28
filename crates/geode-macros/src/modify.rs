@@ -150,14 +150,18 @@ fn expand_modify_impl(class_path: Path, impl_block: ItemImpl) -> Result<TokenStr
                 quote! {
                     #[allow(clippy::not_unsafe_ptr_arg_deref)]
                     pub extern "C" fn #detour_func_name(#detour_params) #output {
-                        #struct_name::#method_name(#call_args)
+                        ::geode_rs::modify::run_hook(#hook_name, || {
+                            #struct_name::#method_name(#call_args)
+                        })
                     }
                 }
             } else {
                 quote! {
                     #[allow(clippy::not_unsafe_ptr_arg_deref)]
                     pub extern "C" fn #detour_func_name(#detour_params) #output {
-                        #block
+                        ::geode_rs::modify::run_hook(#hook_name, || {
+                            #block
+                        })
                     }
                 }
             };

@@ -27,9 +27,21 @@ pub fn android_log(msg: &[u8]) {
     unsafe { __android_log_print(3, b"geode-rs\0".as_ptr(), msg.as_ptr()) };
 }
 
+#[cfg(target_os = "android")]
+pub fn android_log_string(msg: &str) {
+    let msg = msg.replace('%', "%%");
+    if let Ok(msg) = std::ffi::CString::new(msg) {
+        android_log(msg.as_bytes_with_nul());
+    }
+}
+
 #[cfg(not(target_os = "android"))]
 #[allow(dead_code)]
 pub fn android_log(_msg: &[u8]) {}
+
+#[cfg(not(target_os = "android"))]
+#[allow(dead_code)]
+pub fn android_log_string(_msg: &str) {}
 
 #[repr(C)]
 union ResultPayload<T> {
@@ -710,6 +722,12 @@ impl Mod {
         let ptr = raw::loader_take_next_mod(loader.ptr)?;
         (!ptr.is_null()).then_some(ptr)
     }
+}
+
+pub fn expand_sprite_name(name: &str) -> String {
+    Mod::get()
+        .and_then(|current_mod| current_mod.expand_sprite_name(name))
+        .unwrap_or_else(|| name.to_owned())
 }
 
 #[derive(Clone)]

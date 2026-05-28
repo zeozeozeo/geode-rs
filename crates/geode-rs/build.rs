@@ -62,6 +62,11 @@ fn generate_fmod_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
         .clang_arg(format!("--target={clang_target}"))
         .prepend_enum_name(false)
         .derive_debug(false);
+    let mut bindings = bindings;
+    for arg in android_ndk_clang_args(&target_os) {
+        bindings = bindings.clang_arg(arg);
+    }
+
     bindings
         .generate()
         .expect("unable to generate fmod bindings")
@@ -154,6 +159,9 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
 
     for def in &extra_defines {
         builder = builder.clang_arg(*def);
+    }
+    for arg in android_ndk_clang_args(&target_os) {
+        builder = builder.clang_arg(arg);
     }
 
     let builder = builder
@@ -264,6 +272,41 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
     std::fs::write(out_path.join("cocos.rs"), output)?;
 
     Ok(())
+}
+
+#[cfg(feature = "bindgen")]
+fn android_ndk_clang_args(target_os: &str) -> Vec<String> {
+    if target_os != "android" {
+        return Vec::new();
+    }
+
+    let Some(ndk_root) = std::env::var_os("ANDROID_NDK_ROOT")
+        .or_else(|| std::env::var_os("ANDROID_NDK_HOME"))
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+
+    let host_tag = match std::env::consts::OS {
+        "windows" => "windows-x86_64",
+        "macos" if std::env::consts::ARCH == "aarch64" => "darwin-arm64",
+        "macos" => "darwin-x86_64",
+        "linux" => "linux-x86_64",
+        _ => return Vec::new(),
+    };
+
+    let toolchain = ndk_root
+        .join("toolchains")
+        .join("llvm")
+        .join("prebuilt")
+        .join(host_tag);
+    let sysroot = toolchain.join("sysroot");
+    let libcxx = sysroot.join("usr").join("include").join("c++").join("v1");
+
+    vec![
+        format!("--sysroot={}", sysroot.display()),
+        format!("-I{}", libcxx.display()),
+    ]
 }
 
 #[cfg(feature = "bindgen")]

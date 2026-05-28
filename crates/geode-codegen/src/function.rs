@@ -1,4 +1,4 @@
-use crate::android_symbol::generate_android_symbol;
+use crate::android_symbol::{generate_android_symbol, generate_android_symbols};
 use crate::windows_symbol::generate_windows_symbol;
 use broma_rs::{
     Function, FunctionBindField, FunctionType, Platform as BromaPlatform, PlatformNumber,
@@ -65,22 +65,37 @@ fn generate_free_function(func: &Function, platform: Platform, generate_docs: bo
 
     let call_args: Vec<String> = args.iter().map(|(name, _)| name.clone()).collect();
 
+    let args_signature = args
+        .iter()
+        .map(|(n, t)| format!("{}: {}", n, t))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ret_type_str = ret_type.to_rust_str();
+    let call_args_str = call_args.join(", ");
+
+    let try_func_name = format!("try_resolve_{name}");
+
     output.push_str(&format!(
-        "pub fn {}({}) -> {} {{\n",
-        name,
-        args.iter()
-            .map(|(n, t)| format!("{}: {}", n, t))
-            .collect::<Vec<_>>()
-            .join(", "),
-        ret_type.to_rust_str()
+        "pub fn {}({}) -> Result<{}, crate::base::SymbolResolveError> {{\n",
+        try_func_name, args_signature, ret_type_str
     ));
 
     output.push_str(&format!(
-        "    let addr = {resolver};\n    assert!(addr != 0, \"failed to resolve {}()\");\n    unsafe {{\n        let func: {} = std::mem::transmute(addr);\n        func({})\n    }}\n",
-        name,
+        "    let addr = {resolver};\n    if addr == 0 {{\n        return Err(crate::base::SymbolResolveError::new(\"\", \"{name}\"));\n    }}\n    unsafe {{\n        let func: {} = std::mem::transmute(addr);\n        Ok(func({}))\n    }}\n",
         fn_type,
-        call_args.join(", "),
+        call_args_str,
         resolver = generate_free_function_address_resolver(func, platform)
+    ));
+    output.push_str("}\n\n");
+
+    output.push_str(&format!(
+        "pub fn {}({}) -> {} {{\n",
+        name, args_signature, ret_type_str
+    ));
+
+    output.push_str(&format!(
+        "    {}({}).expect(\"failed to resolve {}()\")\n",
+        try_func_name, call_args_str, name
     ));
     output.push_str("}\n\n");
 
@@ -89,6 +104,7 @@ fn generate_free_function(func: &Function, platform: Platform, generate_docs: bo
 
 pub fn generate_member_function(
     func: &FunctionBindField,
+    class_links: BromaPlatform,
     full_class_name: &str,
     class_name: &str,
     generate_docs: bool,
@@ -102,7 +118,7 @@ pub fn generate_member_function(
     }
 
     let name = sanitize_function_name(&func.prototype.name);
-    let ret_type = cpp_to_rust_type(&func.prototype.ret.name);
+    let ret_type = member_return_type(func);
 
     let is_static = func.prototype.is_static;
 
@@ -126,7 +142,7 @@ pub fn generate_member_function(
         ref_args.push((arg_name, ref_ty));
     }
 
-    if !should_generate_member_function(full_class_name, func) {
+    if !should_generate_member_function(class_links, full_class_name, func) {
         return format!("// {}::{} - inline or unspecified\n", class_name, name);
     }
 
@@ -145,18 +161,16 @@ pub fn generate_member_function(
     output.push_str(&generate_platform_addresses_const(
         &func_name,
         &func.binds,
+        class_links,
         full_class_name,
         class_name,
         func,
     ));
     output.push('\n');
 
-    let convention = "extern \"C\"";
-
     let fn_type_args_str: Vec<String> = fn_type_args.iter().map(|(_, ty)| ty.clone()).collect();
     let fn_type = format!(
-        "{} fn({}) -> {}",
-        convention,
+        "extern \"C\" fn({}) -> {}",
         fn_type_args_str.join(", "),
         ret_type.to_rust_str()
     );
@@ -172,35 +186,121 @@ pub fn generate_member_function(
         }
     }
 
+    let ref_args_signature = ref_args
+        .iter()
+        .map(|(n, t)| {
+            if n == "self" {
+                "&mut self".to_string()
+            } else {
+                format!("{}: {}", n, t)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ret_type_str = ret_type.to_rust_str();
+    let (wrapper_signature, wrapper_setup, wrapper_args) = wrapper_signature_and_args(&ref_args);
+    let wrapper_ret_type_str = public_return_type(&ret_type);
+    let try_func_name = format!("try_resolve_{func_name}");
+    let wrapper_call = if !is_static {
+        format!("self.{try_func_name}({wrapper_args})")
+    } else {
+        format!("Self::{try_func_name}({wrapper_args})")
+    };
+
     output.push_str(&format!(
-        "pub fn {}({}) -> {} {{\n",
-        func_name,
-        ref_args
-            .iter()
-            .map(|(n, t)| {
-                if n == "self" {
-                    "&mut self".to_string()
-                } else {
-                    format!("{}: {}", n, t)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", "),
-        ret_type.to_rust_str()
+        "#[allow(unused_variables)]\npub fn {}({}) -> Result<{}, crate::base::SymbolResolveError> {{\n",
+        try_func_name, ref_args_signature, ret_type_str
     ));
 
     output.push_str(&format!(
-        "    let addr = {prefix}{addr}();\n    assert!(addr != 0, \"failed to resolve {class_name}::{func_name}\");\n    unsafe {{\n        let func: {fn_type} = std::mem::transmute(addr);\n        func({args})\n    }}\n",
-        fn_type = fn_type,
+        "    let addr = {prefix}{addr}();\n    if addr == 0 {{\n        return Err(crate::base::SymbolResolveError::new(\"{class_name}\", \"{func_name}\"));\n    }}\n",
         prefix = if is_impl { "Self::" } else { "" },
         addr = addr_const_name,
         class_name = class_name,
-        func_name = func_name,
-        args = call_args.join(", ")
+        func_name = func_name
+    ));
+    output.push_str(&generate_member_call_body(
+        func,
+        &ret_type,
+        &fn_type,
+        &fn_type_args_str,
+        &call_args,
+        is_static,
+    ));
+    output.push_str("}\n\n");
+
+    output.push_str(&format!(
+        "#[allow(unused_variables)]\npub fn {}({}) -> {} {{\n",
+        func_name, wrapper_signature, wrapper_ret_type_str
+    ));
+
+    output.push_str(&wrapper_setup);
+    let resolved = format!(
+        "{}.expect(\"failed to resolve {}::{}\")",
+        wrapper_call, class_name, func_name
+    );
+    output.push_str(&format!(
+        "    {}\n",
+        wrap_public_return(&ret_type, &resolved)
     ));
     output.push_str("}\n\n");
 
     output
+}
+
+fn wrapper_signature_and_args(ref_args: &[(String, String)]) -> (String, String, String) {
+    let mut signature = Vec::new();
+    let mut setup = String::new();
+    let mut args = Vec::new();
+
+    for (name, ty) in ref_args {
+        if name == "self" {
+            signature.push("&mut self".to_string());
+            continue;
+        }
+
+        if ty == "*const c_char" {
+            signature.push(format!("{name}: impl AsRef<str>"));
+            let local = format!("__{name}_cstr");
+            setup.push_str(&format!(
+                "    let {local} = std::ffi::CString::new({name}.as_ref()).expect(\"string contains interior nul byte\");\n"
+            ));
+            args.push(format!("{local}.as_ptr().cast()"));
+        } else {
+            signature.push(format!("{name}: {ty}"));
+            args.push(name.clone());
+        }
+    }
+
+    (signature.join(", "), setup, args.join(", "))
+}
+
+fn public_return_type(ret_type: &RustType) -> String {
+    match ret_type {
+        RustType::Pointer(inner, false)
+            if matches!(
+                inner.as_ref(),
+                RustType::KnownClass(_) | RustType::CocosType(_)
+            ) =>
+        {
+            format!("crate::inherit::Obj<{}>", inner.to_rust_str())
+        }
+        _ => ret_type.to_rust_str(),
+    }
+}
+
+fn wrap_public_return(ret_type: &RustType, value: &str) -> String {
+    match ret_type {
+        RustType::Pointer(inner, false)
+            if matches!(
+                inner.as_ref(),
+                RustType::KnownClass(_) | RustType::CocosType(_)
+            ) =>
+        {
+            format!("crate::inherit::Obj::from_raw({value})")
+        }
+        _ => value.to_string(),
+    }
 }
 
 fn to_ref_types(ty: &crate::types::RustType) -> (String, String) {
@@ -228,6 +328,7 @@ fn to_ref_types(ty: &crate::types::RustType) -> (String, String) {
 pub fn generate_platform_addresses_const(
     func_name: &str,
     binds: &PlatformNumber,
+    class_links: BromaPlatform,
     full_class_name: &str,
     class_name: &str,
     func: &FunctionBindField,
@@ -240,7 +341,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::Windows,
         get_platform_address(binds, Platform::Windows),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -248,7 +349,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::MacIntel,
         get_platform_address(binds, Platform::MacIntel),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -256,7 +357,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::MacArm,
         get_platform_address(binds, Platform::MacArm),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -264,7 +365,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::IOS,
         get_platform_address(binds, Platform::IOS),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -272,7 +373,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::Android32,
         get_platform_address(binds, Platform::Android32),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -280,7 +381,7 @@ pub fn generate_platform_addresses_const(
     output.push_str(&generate_platform_branch(
         Platform::Android64,
         get_platform_address(binds, Platform::Android64),
-        &func.prototype.attributes.links,
+        combined_links(class_links, func.prototype.attributes.links),
         full_class_name,
         class_name,
         func,
@@ -289,6 +390,10 @@ pub fn generate_platform_addresses_const(
     output.push_str("    0\n}\n");
 
     output
+}
+
+fn combined_links(class_links: BromaPlatform, function_links: BromaPlatform) -> BromaPlatform {
+    class_links | function_links
 }
 
 fn get_platform_address(binds: &PlatformNumber, platform: Platform) -> isize {
@@ -314,7 +419,7 @@ fn generate_free_function_address_resolver(func: &Function, platform: Platform) 
 fn generate_platform_branch(
     platform: Platform,
     addr: isize,
-    linked: &BromaPlatform,
+    linked: BromaPlatform,
     full_class_name: &str,
     class_name: &str,
     func: &FunctionBindField,
@@ -335,7 +440,7 @@ fn generate_platform_branch(
         return output;
     }
 
-    if !can_resolve_symbol(platform, *linked, full_class_name, func) {
+    if !can_resolve_symbol(platform, linked, full_class_name, func) {
         output.push_str(" { return 0; }\n");
         return output;
     }
@@ -355,10 +460,7 @@ fn generate_platform_branch(
             }
         }
         Platform::Android32 | Platform::Android64 => {
-            let symbol = generate_android_symbol(full_class_name, func);
-            output.push_str(&format!(
-                " {{ static A: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0); return crate::base::android_resolve_symbol_abs(b\"{symbol}\\0\", &A); }}\n"
-            ));
+            output.push_str(&generate_android_symbol_resolver(full_class_name, func));
         }
         Platform::MacIntel | Platform::MacArm | Platform::IOS => {
             let symbol = generate_android_symbol(full_class_name, func);
@@ -371,17 +473,16 @@ fn generate_platform_branch(
     output
 }
 
-fn should_generate_member_function(full_class_name: &str, func: &FunctionBindField) -> bool {
+fn should_generate_member_function(
+    class_links: BromaPlatform,
+    full_class_name: &str,
+    func: &FunctionBindField,
+) -> bool {
+    let links = combined_links(class_links, func.prototype.attributes.links);
     Platform::all().iter().copied().any(|platform| {
         let addr = get_platform_address(&func.binds, platform);
         addr > 0
-            || (addr == UNSPECIFIED
-                && can_resolve_symbol(
-                    platform,
-                    func.prototype.attributes.links,
-                    full_class_name,
-                    func,
-                ))
+            || (addr == UNSPECIFIED && can_resolve_symbol(platform, links, full_class_name, func))
     })
 }
 
@@ -462,10 +563,6 @@ fn can_resolve_symbol(
     class_name: &str,
     func: &FunctionBindField,
 ) -> bool {
-    if func.prototype.fn_type != FunctionType::Normal {
-        return false;
-    }
-
     if !supports_symbol_signature(func) {
         return false;
     }
@@ -482,7 +579,14 @@ fn can_resolve_symbol(
 }
 
 fn supports_symbol_signature(func: &FunctionBindField) -> bool {
-    supports_symbol_return_type(&cpp_to_rust_type(&func.prototype.ret.name))
+    let supports_return = match func.prototype.fn_type {
+        FunctionType::Constructor | FunctionType::Destructor => true,
+        FunctionType::Normal => {
+            supports_symbol_return_type(&cpp_to_rust_type(&func.prototype.ret.name))
+        }
+    };
+
+    supports_return
         && func
             .prototype
             .args
@@ -490,10 +594,115 @@ fn supports_symbol_signature(func: &FunctionBindField) -> bool {
             .all(|arg| supports_symbol_arg_type(&cpp_to_rust_type(&arg.ty.name)))
 }
 
+fn member_return_type(func: &FunctionBindField) -> RustType {
+    match func.prototype.fn_type {
+        FunctionType::Constructor | FunctionType::Destructor => RustType::Primitive("()".into()),
+        FunctionType::Normal => cpp_to_rust_type(&func.prototype.ret.name),
+    }
+}
+
+fn returns_cpp_record_by_value(func: &FunctionBindField, ret_type: &RustType) -> bool {
+    func.prototype.fn_type == FunctionType::Normal
+        && matches!(ret_type, RustType::KnownClass(_) | RustType::CocosType(_))
+}
+
+fn generate_member_call_body(
+    func: &FunctionBindField,
+    ret_type: &RustType,
+    fn_type: &str,
+    fn_type_args: &[String],
+    call_args: &[String],
+    is_static: bool,
+) -> String {
+    let ret_type_str = ret_type.to_rust_str();
+    let call_args_str = call_args.join(", ");
+
+    if !returns_cpp_record_by_value(func, ret_type) {
+        return format!(
+            "    unsafe {{\n        let func: {fn_type} = std::mem::transmute(addr);\n        Ok(func({call_args_str}))\n    }}\n"
+        );
+    }
+
+    let windows_call =
+        generate_windows_sret_call(&ret_type_str, fn_type_args, call_args, is_static);
+    let android64_call = generate_android_aarch64_sret_call(&ret_type_str, call_args);
+
+    format!(
+        "    unsafe {{\n        #[cfg(target_os = \"windows\")]\n        {{\n{windows_call}        }}\n        #[cfg(all(target_os = \"android\", target_arch = \"aarch64\"))]\n        {{\n{android64_call}        }}\n        #[cfg(not(any(target_os = \"windows\", all(target_os = \"android\", target_arch = \"aarch64\"))))]\n        {{\n            let func: {fn_type} = std::mem::transmute(addr);\n            Ok(func({call_args_str}))\n        }}\n    }}\n"
+    )
+}
+
+fn generate_windows_sret_call(
+    ret_type: &str,
+    fn_type_args: &[String],
+    call_args: &[String],
+    is_static: bool,
+) -> String {
+    if !is_static && !fn_type_args.is_empty() {
+        let this_ty = &fn_type_args[0];
+        let this_arg = &call_args[0];
+        let rest_types = prefixed_join(&fn_type_args[1..]);
+        let rest_args = prefixed_join(&call_args[1..]);
+        format!(
+            "            let mut out = std::mem::MaybeUninit::<{ret_type}>::uninit();\n            let func: extern \"system\" fn({this_ty}, *mut {ret_type}{rest_types}) -> () = std::mem::transmute(addr);\n            func({this_arg}, out.as_mut_ptr(){rest_args});\n            Ok(out.assume_init())\n"
+        )
+    } else {
+        let arg_types = prefixed_join(fn_type_args);
+        let arg_names = prefixed_join(call_args);
+        format!(
+            "            let mut out = std::mem::MaybeUninit::<{ret_type}>::uninit();\n            let func: extern \"system\" fn(*mut {ret_type}{arg_types}) -> () = std::mem::transmute(addr);\n            func(out.as_mut_ptr(){arg_names});\n            Ok(out.assume_init())\n"
+        )
+    }
+}
+
+fn generate_android_aarch64_sret_call(ret_type: &str, call_args: &[String]) -> String {
+    if call_args.len() > 7 {
+        return format!(
+            "            let func: extern \"C\" fn() -> {ret_type} = std::mem::transmute(addr);\n            Ok(func())\n"
+        );
+    }
+
+    let regs = ["x0", "x1", "x2", "x3", "x4", "x5", "x6"];
+    let mut reg_inputs = String::new();
+    for (index, arg) in call_args.iter().enumerate() {
+        let reg = regs[index];
+        reg_inputs.push_str(&format!(
+            "                in(\"{reg}\") {{\n                    let __arg = {arg};\n                    let mut __tmp = 0usize;\n                    let __size = std::mem::size_of_val(&__arg);\n                    let __copy_len = if __size > 8 {{ 8 }} else {{ __size }};\n                    std::ptr::copy_nonoverlapping(\n                        &__arg as *const _ as *const u8,\n                        &mut __tmp as *mut _ as *mut u8,\n                        __copy_len,\n                    );\n                    __tmp\n                }},\n"
+        ));
+    }
+
+    format!(
+        "            let mut out = std::mem::MaybeUninit::<{ret_type}>::uninit();\n            std::arch::asm!(\n                \"blr {{fn_ptr}}\",\n                fn_ptr = in(reg) addr,\n                in(\"x8\") out.as_mut_ptr() as usize,\n{reg_inputs}                clobber_abi(\"C\"),\n            );\n            Ok(out.assume_init())\n"
+    )
+}
+
+fn prefixed_join(values: &[String]) -> String {
+    if values.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", values.join(", "))
+    }
+}
+
+fn generate_android_symbol_resolver(full_class_name: &str, func: &FunctionBindField) -> String {
+    let symbols = generate_android_symbols(full_class_name, func);
+    let mut body = String::from(" {\n");
+
+    for (index, symbol) in symbols.iter().enumerate() {
+        body.push_str(&format!(
+            "        static A{index}: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);\n        let addr = crate::base::android_resolve_symbol_abs(b\"{symbol}\\0\", &A{index});\n        if addr != 0 {{ return addr; }}\n"
+        ));
+    }
+
+    body.push_str("        return 0;\n    }\n");
+    body
+}
+
 fn supports_symbol_return_type(ty: &RustType) -> bool {
     match ty {
         RustType::Primitive(_) => true,
         RustType::Pointer(inner, _) => supports_symbol_pointee_type(inner),
+        RustType::KnownClass(_) | RustType::CocosType(_) => true,
         _ => false,
     }
 }
@@ -502,14 +711,17 @@ fn supports_symbol_arg_type(ty: &RustType) -> bool {
     match ty {
         RustType::Primitive(_) => true,
         RustType::Pointer(inner, _) => supports_symbol_pointee_type(inner),
+        RustType::Reference(inner, _) => supports_symbol_pointee_type(inner),
         RustType::CocosType(name) if name == "enumKeyCodes" => true,
         _ => false,
     }
 }
 
 fn supports_symbol_pointee_type(ty: &RustType) -> bool {
-    matches!(ty, RustType::Primitive(_) | RustType::KnownClass(_))
-        || matches!(ty, RustType::CocosType(name) if name == "CCEvent")
+    matches!(
+        ty,
+        RustType::Primitive(_) | RustType::KnownClass(_) | RustType::CocosType(_)
+    )
 }
 
 fn sanitize_function_name(name: &str) -> String {

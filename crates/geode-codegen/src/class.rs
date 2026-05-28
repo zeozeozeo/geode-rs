@@ -73,6 +73,18 @@ pub fn generate_class(
     }
 
     output.push_str("}\n\n");
+    if let Some(primary_base) = class.superclasses.first() {
+        let base_name = root
+            .find_class(primary_base)
+            .map(|base_class| serialize_name(&base_class.name))
+            .unwrap_or_else(|| serialize_name(primary_base));
+        output.push_str(&format!(
+            "impl std::ops::Deref for {class_name} {{\n    type Target = {base_name};\n\n    fn deref(&self) -> &Self::Target {{\n        &self.base\n    }}\n}}\n\n"
+        ));
+        output.push_str(&format!(
+            "impl std::ops::DerefMut for {class_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut self.base\n    }}\n}}\n\n"
+        ));
+    }
     output.push_str(&generate_impl_block(class, generate_docs));
     output
 }
@@ -116,6 +128,7 @@ fn generate_impl_block(class: &Class, generate_docs: bool) -> String {
 
             let generated = generate_member_function(
                 func,
+                class.attributes.links,
                 &class.name,
                 class_name,
                 generate_docs,
@@ -156,6 +169,7 @@ fn generate_impl_block(class: &Class, generate_docs: bool) -> String {
             };
             let generated = generate_member_function(
                 func,
+                class.attributes.links,
                 &class.name,
                 class_name,
                 generate_docs,
@@ -196,6 +210,7 @@ fn generate_impl_block(class: &Class, generate_docs: bool) -> String {
             };
             let generated = generate_member_function(
                 func,
+                class.attributes.links,
                 &class.name,
                 class_name,
                 generate_docs,

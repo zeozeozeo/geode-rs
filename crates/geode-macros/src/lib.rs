@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 
 mod bind;
+mod cocos_class;
 mod main_;
 mod modify;
 
@@ -30,4 +31,12 @@ pub fn geode_main(_attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn geode_bind(input: TokenStream) -> TokenStream {
     let input: TokenStream2 = input.into();
     convert_result(bind::expand_geode_bind(input))
+}
+
+#[proc_macro_attribute]
+pub fn inherit(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr: TokenStream2 = attr.into();
+    let item: TokenStream2 = item.into();
+
+    convert_result(cocos_class::expand_cocos_class(attr, item))
 }

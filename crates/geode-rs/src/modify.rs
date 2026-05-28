@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::panic::AssertUnwindSafe;
 use std::sync::{Mutex, OnceLock};
 
 use crate::CallingConvention;
@@ -63,6 +64,14 @@ pub unsafe fn register_hook(
     name: &str,
     convention: CallingConvention,
 ) {
+    if address == 0 {
+        #[cfg(not(target_os = "android"))]
+        eprintln!("[geode-rs] refusing to register hook {name} at address 0");
+        #[cfg(target_os = "android")]
+        crate::loader::android_log(b"register_hook: refused address 0\0");
+        return;
+    }
+
     let hooks = PENDING_HOOKS.get_or_init(|| Mutex::new(Vec::new()));
     hooks.lock().unwrap().push(PendingHook {
         address: address as *mut c_void,
@@ -77,16 +86,56 @@ pub fn flush_pending_hooks() {
     let pending: Vec<PendingHook> = hooks.lock().unwrap().drain(..).collect();
 
     for hook in pending {
-        if let Ok(h) = Hook::create(hook.address, hook.detour, &hook.name, hook.convention, 0) {
-            let _ = h.enable();
-        } else {
+        if hook.address.is_null() {
             #[cfg(not(target_os = "android"))]
             eprintln!(
-                "[geode-rs] failed to create hook for address: {:p}",
-                hook.address
+                "[geode-rs] refusing to create hook {} at address 0",
+                hook.name
             );
             #[cfg(target_os = "android")]
-            crate::loader::android_log(b"flush_pending_hooks: hook FAILED\0");
+            crate::loader::android_log(b"flush_pending_hooks: skipped address 0\0");
+            continue;
+        }
+
+        match Hook::create(hook.address, hook.detour, &hook.name, hook.convention, 0) {
+            Ok(h) => {
+                if let Err(err) = h.enable() {
+                    #[cfg(not(target_os = "android"))]
+                    eprintln!("[geode-rs] failed to enable hook {}: {err}", hook.name);
+                    #[cfg(target_os = "android")]
+                    crate::loader::android_log_string(&format!(
+                        "flush_pending_hooks: enable FAILED for {} at {:p}: {err}",
+                        hook.name, hook.address
+                    ));
+                }
+            }
+            Err(err) => {
+                #[cfg(not(target_os = "android"))]
+                eprintln!(
+                    "[geode-rs] failed to create hook {} at {:p}: {err}",
+                    hook.name, hook.address
+                );
+                #[cfg(target_os = "android")]
+                crate::loader::android_log_string(&format!(
+                    "flush_pending_hooks: create FAILED for {} at {:p}: {err}",
+                    hook.name, hook.address
+                ));
+            }
+        }
+    }
+}
+
+pub fn run_hook<R: Default>(name: &str, f: impl FnOnce() -> R) -> R {
+    match std::panic::catch_unwind(AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(_) => {
+            #[cfg(not(target_os = "android"))]
+            eprintln!("[geode-rs] panic in hook {name}; returning default value");
+            #[cfg(target_os = "android")]
+            crate::loader::android_log_string(&format!(
+                "panic in hook {name}; returning default value"
+            ));
+            R::default()
         }
     }
 }

@@ -1,5 +1,6 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
+use std::any::Any;
 use std::cell::RefCell;
 use std::ffi::c_char;
 use std::fmt;
@@ -26,6 +27,9 @@ const TOUCH_MOVED: u32 = 1;
 const TOUCH_ENDED: u32 = 2;
 const TOUCH_CANCELLED: u32 = 3;
 const SCROLL_MULTIPLIER: f32 = 0.1;
+const MIN_FRAME_DIMENSION: f32 = 1.0;
+const MAX_FRAME_DIMENSION: f32 = 32768.0;
+const MAX_PIXELS_PER_POINT: f32 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -39,6 +43,7 @@ pub enum RenderError {
     MissingScreenSize,
     GlowContextUnavailable,
     PainterInit(String),
+    Panic(String),
 }
 
 impl fmt::Display for RenderError {
@@ -52,6 +57,7 @@ impl fmt::Display for RenderError {
             Self::PainterInit(error) => {
                 write!(f, "failed to initialize egui_glow painter: {error}")
             }
+            Self::Panic(error) => write!(f, "egui render panic: {error}"),
         }
     }
 }
@@ -261,11 +267,16 @@ impl Backend {
                 gl.get_parameter_i32_slice(glow::VIEWPORT, &mut viewport);
             }
             if viewport[2] > 0 && viewport[3] > 0 {
-                frame.pixels = [viewport[2] as u32, viewport[3] as u32];
-                frame.egui_size = Vec2::new(
-                    viewport[2] as f32 / frame.pixels_per_point,
-                    viewport[3] as f32 / frame.pixels_per_point,
-                );
+                let viewport_pixels = [viewport[2] as u32, viewport[3] as u32];
+                frame.pixels = viewport_pixels;
+
+                if cfg!(target_os = "android") {
+                    frame.pixels_per_point = pixels_per_point_from(frame.points, viewport_pixels);
+                    frame.egui_size = frame.points;
+                } else {
+                    frame.pixels_per_point = 1.0;
+                    frame.egui_size = Vec2::new(viewport[2] as f32, viewport[3] as f32);
+                }
             }
         }
         update_last_frame_info(frame);
@@ -379,11 +390,14 @@ fn current_frame_info() -> Result<FrameInfo, RenderError> {
         let win_size = (*director).getWinSize();
         let delta_time = CCDirector_getDeltaTime(director.cast());
 
-        let points = Vec2::new(win_size.width.max(1.0), win_size.height.max(1.0));
+        let points = Vec2::new(
+            sanitize_dimension(win_size.width),
+            sanitize_dimension(win_size.height),
+        );
         let win_size_pixels = (*director).getWinSizeInPixels();
         let mut pixels = [
-            win_size_pixels.width.max(1.0).round() as u32,
-            win_size_pixels.height.max(1.0).round() as u32,
+            sanitize_dimension(win_size_pixels.width).round() as u32,
+            sanitize_dimension(win_size_pixels.height).round() as u32,
         ];
 
         if pixels[0] == 0 || pixels[1] == 0 {
@@ -393,8 +407,8 @@ fn current_frame_info() -> Result<FrameInfo, RenderError> {
                 if !frame_size.is_null() {
                     let factor = geode_rs::geode_display_factor().max(1.0);
                     pixels = [
-                        ((*frame_size).width * factor).max(1.0).round() as u32,
-                        ((*frame_size).height * factor).max(1.0).round() as u32,
+                        sanitize_dimension((*frame_size).width * factor).round() as u32,
+                        sanitize_dimension((*frame_size).height * factor).round() as u32,
                     ];
                 }
             }
@@ -404,11 +418,7 @@ fn current_frame_info() -> Result<FrameInfo, RenderError> {
             return Err(RenderError::MissingScreenSize);
         }
 
-        let pixels_per_point = {
-            let scale_x = pixels[0] as f32 / points.x.max(1.0);
-            let scale_y = pixels[1] as f32 / points.y.max(1.0);
-            scale_x.max(scale_y).max(1.0)
-        };
+        let pixels_per_point = pixels_per_point_from(points, pixels);
         let egui_size = if cfg!(target_os = "android") {
             points
         } else {
@@ -429,6 +439,22 @@ fn current_frame_info() -> Result<FrameInfo, RenderError> {
     }
 }
 
+fn sanitize_dimension(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_FRAME_DIMENSION, MAX_FRAME_DIMENSION)
+    } else {
+        MIN_FRAME_DIMENSION
+    }
+}
+
+fn pixels_per_point_from(points: Vec2, pixels: [u32; 2]) -> f32 {
+    let scale_x = pixels[0] as f32 / points.x.max(MIN_FRAME_DIMENSION);
+    let scale_y = pixels[1] as f32 / points.y.max(MIN_FRAME_DIMENSION);
+    scale_x
+        .max(scale_y)
+        .clamp(MIN_FRAME_DIMENSION, MAX_PIXELS_PER_POINT)
+}
+
 #[cfg(not(target_os = "android"))]
 fn current_desktop_pointer_position(frame: FrameInfo) -> Option<Pos2> {
     cocos_point_to_egui_with_frame(geode_rs::geode_mouse_position(), frame)
@@ -446,6 +472,16 @@ fn make_glow_context() -> Result<Arc<glow::Context>, RenderError> {
         ))
     }))
     .map_err(|_| RenderError::GlowContextUnavailable)
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
 }
 
 fn update_last_error(backend: &mut Backend, result: &Result<(), RenderError>) {
@@ -764,18 +800,24 @@ pub fn shutdown() {
 }
 
 pub fn try_paint_frame() -> Result<(), RenderError> {
-    with_backend(|backend| {
-        let result = backend.try_paint_frame();
-        update_last_error(backend, &result);
-        result
-    })
+    match catch_unwind(AssertUnwindSafe(|| {
+        with_backend(|backend| {
+            let result = backend.try_paint_frame();
+            update_last_error(backend, &result);
+            result
+        })
+    })) {
+        Ok(result) => result,
+        Err(payload) => {
+            let result = Err(RenderError::Panic(panic_payload_message(payload.as_ref())));
+            with_backend(|backend| update_last_error(backend, &result));
+            result
+        }
+    }
 }
 
 pub fn paint_frame() {
-    with_backend(|backend| {
-        let result = backend.try_paint_frame();
-        update_last_error(backend, &result);
-    });
+    let _ = try_paint_frame();
 }
 
 #[doc(hidden)]
@@ -786,7 +828,8 @@ pub unsafe fn dispatch_insert_text_hook(
     key: geode_rs::cocos::enumKeyCodes,
 ) {
     if !is_visible_internal() {
-        this.dispatch_insert_text(text, len, key);
+        let _ =
+            this.try_resolve_dispatch_insert_text(text.cast::<geode_rs::types::c_char>(), len, key);
         return;
     }
 
@@ -799,7 +842,8 @@ pub unsafe fn dispatch_insert_text_hook(
     }
 
     if !should_capture_keyboard() {
-        this.dispatch_insert_text(text, len, key);
+        let _ =
+            this.try_resolve_dispatch_insert_text(text.cast::<geode_rs::types::c_char>(), len, key);
     }
 }
 
@@ -892,7 +936,10 @@ pub unsafe fn touch_dispatch_hook(
         return;
     }
 
-    let touch = touches.any_object().cast::<geode_rs::classes::CCTouch>();
+    let touch = touches
+        .try_resolve_any_object()
+        .unwrap_or(std::ptr::null_mut())
+        .cast::<geode_rs::classes::CCTouch>();
     if touch.is_null() {
         this.touches(touches, event, ty);
         return;

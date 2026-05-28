@@ -62,6 +62,18 @@ fn subs_seen(seen: &mut Vec<String>, mangled: String, subs: bool, expanded: &str
     mangled
 }
 
+fn seed_name_context(seen: &mut Vec<String>, class_name: &str) {
+    if class_name.contains("::") {
+        let namespace = class_name.rsplit_once("::").map(|(namespace, _)| namespace);
+        if let Some(namespace) = namespace {
+            seen.push(mangle_ident(namespace, false));
+        }
+        seen.push(format!("N{}E", mangle_ident(class_name, false)));
+    } else {
+        seen.push(mangle_ident(class_name, true));
+    }
+}
+
 fn split_template_recursive(s: &str) -> Vec<String> {
     let mut result = Vec::new();
     let mut depth = 0i32;
@@ -117,6 +129,7 @@ fn mangle_type(seen: &mut Vec<String>, name: &str, subs: bool, is_template: bool
         "gd::string" => return "Ss".to_string(),
         "std::allocator" => return "Sa".to_string(),
         "cocos2d::ccColor3B" => return mangle_type(seen, "cocos2d::_ccColor3B", subs, is_template),
+        "cocos2d::ccColor4B" => return mangle_type(seen, "cocos2d::_ccColor4B", subs, is_template),
         _ => {}
     }
 
@@ -199,6 +212,13 @@ fn mangle_type(seen: &mut Vec<String>, name: &str, subs: bool, is_template: bool
 
     // qualified name
     if name.contains("::") {
+        let full_name = mangle_ident(name, true);
+        if subs {
+            if let Some(x) = look_for_seen(seen, &full_name) {
+                return x;
+            }
+        }
+
         let mut result = String::new();
         let mut substituted = String::new();
         let mut remaining = name;
@@ -358,9 +378,7 @@ pub fn generate_android_symbol(class_name: &str, func: &FunctionBindField) -> St
         mangled.push('v');
     } else {
         let mut seen = Vec::new();
-        // first part of class name (before ::) is S_
-        let first_part = class_name.split("::").next().unwrap_or(class_name);
-        seen.push(mangle_ident(first_part, true));
+        seed_name_context(&mut seen, class_name);
 
         for arg in &decl.args {
             mangled.push_str(&mangle_type(&mut seen, &arg.ty.name, true, false));
@@ -368,4 +386,120 @@ pub fn generate_android_symbol(class_name: &str, func: &FunctionBindField) -> St
     }
 
     mangled
+}
+
+pub fn generate_android_symbols(class_name: &str, func: &FunctionBindField) -> Vec<String> {
+    let symbol = generate_android_symbol(class_name, func);
+
+    match func.prototype.fn_type {
+        FunctionType::Constructor => {
+            let complete = symbol.replacen("C2E", "C1E", 1);
+            if complete == symbol {
+                vec![symbol]
+            } else {
+                vec![complete, symbol]
+            }
+        }
+        FunctionType::Destructor => {
+            let complete = symbol.replacen("D2E", "D1E", 1);
+            if complete == symbol {
+                vec![symbol]
+            } else {
+                vec![complete, symbol]
+            }
+        }
+        FunctionType::Normal => vec![symbol],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use broma_rs::{Arg, FunctionType, MemberFunctionProto, Type};
+
+    fn arg(name: &str, ty: &str) -> Arg {
+        Arg {
+            name: name.into(),
+            ty: Type::new(ty),
+        }
+    }
+
+    #[test]
+    fn constructor_symbols_include_complete_and_base_variants() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "CCLayerColor".into(),
+                ret: Type::new("void"),
+                fn_type: FunctionType::Constructor,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_android_symbols("cocos2d::CCLayerColor", &func),
+            vec![
+                "_ZN7cocos2d12CCLayerColorC1Ev".to_string(),
+                "_ZN7cocos2d12CCLayerColorC2Ev".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn destructor_symbols_include_complete_and_base_variants() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "~CCLayerColor".into(),
+                ret: Type::new("void"),
+                fn_type: FunctionType::Destructor,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_android_symbols("cocos2d::CCLayerColor", &func),
+            vec![
+                "_ZN7cocos2d12CCLayerColorD1Ev".to_string(),
+                "_ZN7cocos2d12CCLayerColorD2Ev".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn mangles_repeated_pointer_args_with_nested_name_substitution() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "create".into(),
+                ret: Type::new("cocos2d::CCLabelBMFont*"),
+                is_static: true,
+                args: vec![arg("str", "char const*"), arg("font", "char const*")],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_android_symbol("cocos2d::CCLabelBMFont", &func),
+            "_ZN7cocos2d13CCLabelBMFont6createEPKcS2_"
+        );
+    }
+
+    #[test]
+    fn mangles_same_class_pointer_arg_with_substitution() {
+        let func = FunctionBindField {
+            prototype: MemberFunctionProto {
+                name: "addChild".into(),
+                ret: Type::new("void"),
+                args: vec![arg("child", "cocos2d::CCNode*")],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            generate_android_symbol("cocos2d::CCNode", &func),
+            "_ZN7cocos2d6CCNode8addChildEPS0_"
+        );
+    }
 }
