@@ -603,7 +603,15 @@ fn member_return_type(func: &FunctionBindField) -> RustType {
 
 fn returns_cpp_record_by_value(func: &FunctionBindField, ret_type: &RustType) -> bool {
     func.prototype.fn_type == FunctionType::Normal
-        && matches!(ret_type, RustType::KnownClass(_) | RustType::CocosType(_))
+        && match ret_type {
+            RustType::KnownClass(_) => true,
+            RustType::CocosType(name) => is_nontrivial_cocos_record(name),
+            _ => false,
+        }
+}
+
+fn is_nontrivial_cocos_record(name: &str) -> bool {
+    matches!(name, "CCPoint" | "CCSize" | "CCRect")
 }
 
 fn generate_member_call_body(
