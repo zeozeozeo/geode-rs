@@ -2,6 +2,8 @@
 
 An effort to port the Geode client mod API to Rust (WIP).
 
+<img width="1280" height="720" alt="image" src="https://github.com/user-attachments/assets/4ed950f5-b516-41a2-b8b6-e59c093c2279" />
+
 ## Crates
 
 - [broma-rs](./crates/broma-rs) - an implementation of the Broma language parser in Rust.
@@ -15,6 +17,5 @@ An effort to port the Geode client mod API to Rust (WIP).
 
 ## TODO
 
-- Inherit cocos classes?
 - android32 (untested, compiles), iOS, MacOS
 - ~~Automatically generate loader bindings? (long shot)~~ semi-done?
