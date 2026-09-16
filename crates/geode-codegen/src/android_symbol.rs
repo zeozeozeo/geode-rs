@@ -213,10 +213,8 @@ fn mangle_type(seen: &mut Vec<String>, name: &str, subs: bool, is_template: bool
     // qualified name
     if name.contains("::") {
         let full_name = mangle_ident(name, true);
-        if subs {
-            if let Some(x) = look_for_seen(seen, &full_name) {
-                return x;
-            }
+        if subs && let Some(x) = look_for_seen(seen, &full_name) {
+            return x;
         }
 
         let mut result = String::new();
