@@ -258,7 +258,8 @@ fn generate_cocos_bindings(out_path: &std::path::Path) -> anyhow::Result<()> {
     output.push_str("#![allow(improper_ctypes)]\n");
     output.push_str("#![allow(clippy::missing_safety_doc)]\n");
     output.push_str("#![allow(clippy::too_many_arguments)]\n");
-    output.push_str("#![allow(unsafe_op_in_unsafe_fn)]\n\n");
+    output.push_str("#![allow(unsafe_op_in_unsafe_fn)]\n");
+    output.push_str("#![allow(c_void_returns)]\n\n");
     output.push_str("use super::types::GdString;\n");
     output.push_str("#[allow(non_camel_case_types)] pub type va_list = *mut std::ffi::c_void;\n");
     output.push_str(

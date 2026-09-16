@@ -289,12 +289,13 @@ impl Backend {
         };
         self.time_seconds += delta_time as f64;
 
+        let mut events = mem::take(&mut input.pending_events);
+        events.insert(0, Event::ModifiersChanged(input.modifiers));
         let mut raw_input = RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, frame.egui_size)),
             time: Some(self.time_seconds),
             predicted_dt: delta_time,
-            modifiers: input.modifiers,
-            events: mem::take(&mut input.pending_events),
+            events,
             focused: true,
             ..Default::default()
         };
@@ -310,7 +311,7 @@ impl Backend {
         if let Some(callback) = self.callback.as_deref_mut() {
             callback(&self.ctx);
         }
-        let full_output = self.ctx.end_pass();
+        let mut full_output = self.ctx.end_pass();
         {
             let mut input = lock_input_state();
             input.wants_pointer_input = self.ctx.egui_wants_pointer_input();
@@ -331,7 +332,7 @@ impl Backend {
                 frame.pixels,
                 frame.pixels_per_point,
                 &clipped_primitives,
-                &full_output.textures_delta,
+                &mut full_output.textures_delta,
             );
 
             state.restore(gl);
@@ -527,7 +528,7 @@ fn should_capture_keyboard() -> bool {
 fn update_modifiers_from_key_event(key: enumKeyCodes, pressed: bool) {
     with_input_state(|input| {
         let mut modifiers = input.modifiers;
-        #[allow(non_upper_case_globals)]
+        #[allow(non_upper_case_globals, non_snake_case)]
         match key {
             enumKeyCodes_KEY_Shift | enumKeyCodes_KEY_LeftShift | enumKeyCodes_KEY_RightShift => {
                 modifiers.shift = pressed

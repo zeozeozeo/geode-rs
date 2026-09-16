@@ -200,7 +200,7 @@ fn expand_modify_impl(class_path: Path, impl_block: ItemImpl) -> Result<TokenStr
         #(#detour_functions)*
 
         #[used]
-        #[::geode_rs::ctor::ctor(crate_path = ::geode_rs::ctor)]
+        #[::geode_rs::ctor::ctor(unsafe, crate_path = ::geode_rs::ctor)]
         static #hooks_static_name: () = {
             #(#hook_registrations)*
         };

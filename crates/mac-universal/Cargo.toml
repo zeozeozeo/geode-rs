@@ -9,4 +9,4 @@ name = "mac-universal"
 path = "src/main.rs"
 
 [dependencies]
-fat-macho = "0.4"
+fat-macho = "0.5"
