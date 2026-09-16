@@ -186,6 +186,7 @@ pub struct MemberField {
     pub name: String,
     pub ty: Type,
     pub count: usize,
+    pub renamed_from: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

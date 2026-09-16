@@ -81,11 +81,12 @@ long_qualified = _{
 // attribute
 docs_content = { (!NEWLINE ~ ANY)* }
 docs_attribute = ${ "///" ~ docs_content ~ NEWLINE? }
-attribute_inner = { depends_attribute | link_attribute | missing_attribute | since_attribute }
+attribute_inner = { depends_attribute | link_attribute | missing_attribute | since_attribute | renamed_from_attribute }
 depends_attribute = { "depends" ~ "(" ~ qualified ~ ("," ~ qualified)* ~ ")" }
 link_attribute = { "link" ~ "(" ~ platform_list? ~ ")" }
 missing_attribute = { "missing" ~ "(" ~ platform_list? ~ ")" }
 since_attribute = { "since" ~ "(" ~ string_literal ~ ")" }
+renamed_from_attribute = { "renamed_from" ~ "(" ~ identifier ~ ("," ~ identifier)* ~ ")" }
 attribute = {
     docs_attribute* ~
     ("[[" ~ attribute_inner ~ ("," ~ attribute_inner)* ~ "]]")?
@@ -140,7 +141,7 @@ bind_expr = {
 
 // member variable
 member_expr = {
-    platform? ~ type ~ sep ~ identifier ~ sep ~ ("[" ~ number ~ "]")? ~ sep ~ ";"
+    attribute? ~ sep ~ platform? ~ type ~ sep ~ identifier ~ sep ~ ("[" ~ number ~ "]")? ~ sep ~ ";"
 }
 
 // pad expression

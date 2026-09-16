@@ -725,7 +725,7 @@ class BoomListLayer : cocos2d::CCLayerColor {
 
 [[link(android)]]
 class BoomListView : cocos2d::CCLayer, TableViewDelegate, TableViewDataSource {
-    BoomListView() = inline;
+    BoomListView() = win 0x3be90, inline;
     ~BoomListView() = win 0x3bf80, imac 0x30c2f0, m1 0x29bc44, ios 0x1cfde0;
 
     static BoomListView* create(cocos2d::CCArray* entries, TableViewCellDelegate* delegate, float height, float width, int page, BoomListType type, float y) = win inline, imac 0x30c610, m1 0x29be54, ios inline;
@@ -3292,16 +3292,16 @@ class DialogObject : cocos2d::CCObject {
     // virtual ~DialogObject();
     DialogObject() = inline;
 
-    static DialogObject* create(gd::string character, gd::string text, int characterFrame, float textScale, bool skippable, cocos2d::ccColor3B color) = win 0xd32d0, imac 0x3c6c40, m1 0x3482a0, ios 0x865b4;
+    static DialogObject* create(gd::string character, gd::string text, int characterFrame, float textScale, bool unskippable, cocos2d::ccColor3B nameColor) = win 0xd32d0, imac 0x3c6c40, m1 0x3482a0, ios 0x865b4;
 
-    bool init(gd::string character, gd::string text, int characterFrame, float textScale, bool skippable, cocos2d::ccColor3B color) = win inline, imac 0x3c6dd0, m1 0x348458, ios inline;
+    bool init(gd::string character, gd::string text, int characterFrame, float textScale, bool unskippable, cocos2d::ccColor3B nameColor) = win inline, imac 0x3c6dd0, m1 0x348458, ios inline;
 
     gd::string m_text;
     gd::string m_character;
     int m_characterFrame;
-    cocos2d::ccColor3B m_color;
+    cocos2d::ccColor3B m_nameColor;
     float m_textScale;
-    bool m_skippable;
+    bool m_unskippable;
 }
 
 [[link(android)]]
@@ -4255,6 +4255,7 @@ class EffectGameObject : EnhancedGameObject {
     int m_secretCoinID;
     bool m_unk6f4;
     bool m_unk6f5;
+    bool m_isPost2208Remap;
     cocos2d::CCPoint m_endPosition;
     float m_spawnTriggerDelay;
     float m_gravityMod;
@@ -5723,21 +5724,32 @@ class GameLevelOptionsLayer : GJOptionsLayer {
     GJGameLevel* m_level;
 }
 
+/// This class handles most game logic, and events.
 [[link(android), depends(UIButtonConfig)]]
 class GameManager : GManager {
     // virtual ~GameManager();
     // GameManager() = win 0x17ab40, ios 0x32eafc;
 
+    /// Gets the active GameManager
+    /// @returns The current instance pointer of the GameManager
     static GameManager* get() = inline;
     static GameManager* sharedState() = win 0x17b4a0, imac 0x376a80, m1 0x300128, ios 0x311ce8;
 
+    /// Updates the GameManager for the current frame.
+    /// @param dt Delta time (Time elapsed between the last frame and the current one)
     virtual void update(float dt) = win 0x189bc0, imac 0x38bb20, m1 0x312910, ios 0x31d358;
+    /// Initializes the GameManager.
+    /// @returns A true or false value for whether initialization was successful or not.
     virtual bool init() = win 0x17b4f0, imac 0x376ae0, m1 0x300194, ios 0x311d48;
     virtual void encodeDataTo(DS_Dictionary* dict) = win 0x188fb0, imac 0x38af20, m1 0x311d34, ios 0x31cb0c;
     virtual void dataLoaded(DS_Dictionary* dict) = win 0x186a90, imac 0x389140, m1 0x310294, ios 0x31b408;
     virtual void firstLoad() = win 0x1886b0, imac 0x38a600, m1 0x311520, ios 0x31c5f8;
 
+    /// When the client's account status is changed (e.g. logged in or logged out), this will be called.
     void accountStatusChanged() = win inline, imac 0x384e20, m1 0x30cb20, ios 0x319740;
+    /// Gets the ID for one of the client's current icons.
+    /// @param type The type of icon to get the ID for
+    /// @returns Icon ID
     int activeIconForType(IconType type) = win 0x181a90, imac 0x380b80, m1 0x308b74, ios 0x317640;
     void addCustomAnimationFrame(int objectID, int frameIndex, gd::string mainFrame, gd::string detailFrame) = win 0x1aeb60, imac 0x266460, m1 0x20a000, ios 0x34f588;
     void addDuplicateLastFrame(int objectID) = win inline, imac 0x266590, m1 0x20a118, ios inline;
@@ -5760,6 +5772,7 @@ class GameManager : GManager {
     int countForType(IconType type) = win 0x181c00, imac 0x380df0, m1 0x308c84, ios 0x317750;
     int defaultFrameForAnimation(int objectID) = win inline, imac 0x25d9c0, m1 0x201d2c, ios inline;
     void didExitPlayscene() = win inline, imac 0x38ba90, m1 0x312860, ios 0x31d310;
+    /// Performs a "Quick Save" and saves the progress of the client.
     void doQuickSave() = win inline, imac 0x38ba60, m1 0x312834, ios 0x31d2e4;
     gd::string dpadConfigToString(UIButtonConfig& config) = win 0x186490, imac 0x3878b0, m1 0x30ecf4, ios 0x31a98c;
     void eventUnlockFeature(char const* key) = win inline, imac 0x37fb20, m1 0x307af0, ios inline;
@@ -5794,22 +5807,54 @@ class GameManager : GManager {
     int getNextUniqueObjectKey() = win inline, imac 0x384440, m1 0x30c174, ios 0x319208;
     int getNextUsedKey(int index, bool up) = win inline, imac 0x384530, m1 0x30c26c, ios 0x3192c4;
     cocos2d::CCArray* getOrderedCustomObjectKeys() = win inline, imac 0x3844e0, m1 0x30c220, ios 0x319278;
+    /// Gets the icon ID for the client's current ball icon.
+    /// @returns Icon ID
     int getPlayerBall() = inline;
+    /// Gets the icon ID for the client's current bird/ufo icon.
+    /// @returns Icon ID
     int getPlayerBird() = inline;
+    /// Gets the color ID for the client's current primary color.
+    /// @returns Color ID
     int getPlayerColor() = inline;
+    /// Gets the color ID for the client's current secondary color.
+    /// @returns Color ID
     int getPlayerColor2() = inline;
+    /// Gets the icon ID for the client's current dart/wave icon.
+    /// @returns Icon ID
     int getPlayerDart() = inline;
+    /// Gets the death effect ID for the client's current death effect.
+    /// @returns Death effect ID
     int getPlayerDeathEffect() = inline;
+    /// Gets the icon ID for the client's current cube icon.
+    /// @returns Icon ID
     int getPlayerFrame() = inline;
+    /// Gets the "Glow Enabled" state for the client's icons.
+    /// @returns Glow enabled state
     bool getPlayerGlow() = inline;
+    /// Gets the color ID for the client's current glow color.
+    /// @returns Color ID
     int getPlayerGlowColor() = inline;
+    /// Gets the icon ID for the client's current jetpack icon.
+    /// @returns Icon ID
     int getPlayerJetpack() = inline;
+    /// Gets the icon ID for the client's current robot icon.
+    /// @returns Icon ID
     int getPlayerRobot() = inline;
+    /// Gets the icon ID for the client's current ship icon.
+    /// @returns Icon ID
     int getPlayerShip() = inline;
     int getPlayerShipFire() = inline;
+    /// Gets the ID for the client's current spider icon.
+    /// @returns Icon ID
     int getPlayerSpider() = inline;
+    /// Gets the ID for the client's current streak/trail.
+    /// @returns Streak ID
     int getPlayerStreak() = inline;
+    /// Gets the ID for the client's current swing icon.
+    /// @returns Icon ID
     int getPlayerSwing() = inline;
+    /// Gets the active PlayLayer. Returns nullptr if none.
+    /// @returns PlayLayer pointer
     PlayLayer* getPlayLayer() = inline;
     gd::string getPracticeMusicFile() = win inline, imac 0x376ec0, m1 0x30055c, ios 0x311fcc;
     bool getUGV(char const* key) = win 0x1834a0, imac 0x3840b0, m1 0x30bd78, ios 0x318fe8;
@@ -6619,7 +6664,7 @@ class GameObject : CCSpritePlus {
     float m_areaOpacityValue;
     int m_areaOpacityIndex;
     int m_unk52C;
-    bool m_unk530;
+    bool m_hasDynamicallySaved; // m_unk530
     bool m_isUIObject;
     bool m_greenDebugDraw;
 }
@@ -6665,9 +6710,9 @@ class GameOptionsLayer : GJOptionsLayer {
     virtual void didToggle(int tag) = win 0x2a0560, imac 0x2b1ea0, m1 0x24ffa8, ios 0x2e2190;
 
     bool init(GJBaseGameLayer* baseGameLayer) = win inline, imac 0x2b10b0, m1 0x24f210, ios 0x2e15ec;
-    void onPracticeMusicSync(cocos2d::CCObject* sender) = win 0x2a0270, imac 0x2b18a0, m1 0x24f9c0, ios 0x2e1d48;
-    void onUIOptions(cocos2d::CCObject* sender) = win 0x2a03f0, imac 0x2b1800, m1 0x24f92c, ios 0x2e1cb4;
-    void onUIPOptions(cocos2d::CCObject* sender) = win 0x2a0410, imac 0x2b1880, m1 0x24f9a0, ios 0x2e1d28;
+    void onPracticeMusicSync(cocos2d::CCObject* sender) = win 0x2a0270, imac 0x2b1800, m1 0x24f92c, ios 0x2e1cb4;
+    void onUIOptions(cocos2d::CCObject* sender) = win 0x2a03f0, imac 0x2b1880, m1 0x24f9a0, ios 0x2e1d28;
+    void onUIPOptions(cocos2d::CCObject* sender) = win 0x2a0410, imac 0x2b18a0, m1 0x24f9c0, ios 0x2e1d48;
     void showPracticeMusicSyncUnlockInfo() = win 0x29fa10, imac 0x2b1900, m1 0x24fa2c, ios 0x2e1d64;
 
     GJBaseGameLayer* m_baseGameLayer;
@@ -8927,7 +8972,7 @@ class GJGameState {
     int m_unkInt14;
     int m_unkInt15;
     bool m_unkBool7;
-    bool m_unkBool8;
+    bool m_isFreeMode; // m_unkBool8
     bool m_unkBool9;
     float m_unkFloat5;
     float m_unkFloat6;
@@ -8988,10 +9033,14 @@ class GJGameState {
     float m_unkUint14;
     bool m_unkBool26;
     bool m_cameraShakeEnabled;
-    float m_cameraShakeFactor;
-    float m_unkUint15;
-    float m_unkUint16;
-    double m_unkUint64_1;
+    [[renamed_from(m_cameraShakeFactor)]]
+    float m_cameraShakeDuration;
+    [[renamed_from(m_unkUint15)]]
+    float m_cameraShakeStrength;
+    [[renamed_from(m_unkUint16)]]
+    float m_cameraShakeInterval;
+    [[renamed_from(m_unkUint64_1)]]
+    double m_lastShakeTime;
     cocos2d::CCPoint m_unkPoint34;
     unsigned int m_dualRelated;
     gd::unordered_map<int, EnhancedGameObject*> m_stateObjects;
@@ -11765,7 +11814,7 @@ class LevelBrowserLayer : cocos2d::CCLayerColor, LevelManagerDelegate, FLAlertLa
     bool m_unk2;
     int m_listHeight;
     float m_unkFloat;
-    float m_unkFloat2;
+    float m_initialListViewY;
     TableViewCellDelegate* m_delegate;
     bool m_cached;
 }
@@ -12023,7 +12072,7 @@ class LevelEditorLayer : GJBaseGameLayer, LevelSettingsDelegate {
     cocos2d::CCArray* m_cameraGuideTriggers;
     cocos2d::CCArray* m_particleObjects;
     cocos2d::CCArray* m_keyframeObjects;
-    cocos2d::CCDictionary* m_unk3720;
+    cocos2d::CCArray* m_spawnOrderTriggers;
     cocos2d::CCArray* m_playtestTriggers;
     GameObject* m_copyStateObject;
     ParticleGameObject* m_particleObject;
@@ -12372,7 +12421,7 @@ class LevelManagerDelegate {
 [[link(android)]]
 class LevelOptionsLayer : GJOptionsLayer {
     // virtual ~LevelOptionsLayer();
-    LevelOptionsLayer() = inline;
+    LevelOptionsLayer() = win 0x31e730, inline;
 
     static LevelOptionsLayer* create(LevelSettingsObject* object) = win inline, imac 0x26e720, m1 0x2117fc, ios 0x17babc;
 
@@ -12724,6 +12773,8 @@ class LevelSettingsObject : cocos2d::CCNode {
     bool m_reverseSync;
     // property kA45
     bool m_decreaseBoostSlide;
+    // property kA48
+    bool m_enableImpulseFix;
 }
 
 [[link(android)]]
@@ -14892,7 +14943,8 @@ class PlayerObject : GameObject, AnimatedSpriteDelegate {
     cocos2d::CCPoint m_stateForceVector;
     bool m_affectedByForces;
     gd::map<int, bool> m_jumpPadRelated;
-    float m_somethingPlayerSpeedTime;
+    [[renamed_from(m_somethingPlayerSpeedTime)]]
+    float m_lastMovedTime;
     float m_playerSpeedAC;
     bool m_fixRobotJump;
     gd::map<int, bool> m_holdingButtons;
@@ -14916,6 +14968,7 @@ class PlayerObject : GameObject, AnimatedSpriteDelegate {
     bool m_spiderAnimationEnabled;
     bool m_ignoreDamage;
     bool m_enable22Changes;
+    bool m_enableImpulseFix;
 }
 
 [[link(android), depends(DynamicBitset), depends(SavedActiveObjectState), depends(SavedObjectStateRef), depends(SavedSpecialObjectState)]]
@@ -16869,7 +16922,7 @@ class SetupCollisionStateTriggerPopup : SetupInstantCollisionTriggerPopup {
     // virtual ~SetupCollisionStateTriggerPopup();
     SetupCollisionStateTriggerPopup() = inline;
 
-    static SetupCollisionStateTriggerPopup* create(EffectGameObject* object, cocos2d::CCArray* objects) = win inline, imac 0x397d20, m1 0x31d938, ios 0x231488;
+    static SetupCollisionStateTriggerPopup* create(EffectGameObject* object, cocos2d::CCArray* objects) = win 0x41a8b0, imac 0x397d20, m1 0x31d938, ios 0x231488;
 
     bool init(EffectGameObject* object, cocos2d::CCArray* objects) = win 0x41a9c0, imac 0x397f50, m1 0x31dac4, ios 0x231564;
 }
@@ -19203,7 +19256,8 @@ class SongInfoObject : cocos2d::CCNode {
 
     static SongInfoObject* create(cocos2d::CCDictionary* dict) = win 0x3448b0, imac 0x58c1e0, m1 0x4d740c, ios 0x154920;
     static SongInfoObject* create(int songID) = win 0x344730, imac 0x596ea0, m1 0x4e0cc0, ios 0x15b164;
-    static SongInfoObject* create(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string unknown, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345bf0, imac 0x593d00, m1 0x4ddfe4, ios 0x158f48;
+    /// @param downloadLinkOverride The user-friendly page URL for the song
+    static SongInfoObject* create(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string downloadLinkOverride, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345bf0, imac 0x593d00, m1 0x4ddfe4, ios 0x158f48;
     static SongInfoObject* createWithCoder(DS_Dictionary* dict) = win 0x346250, imac 0x5974f0, m1 0x4e1260, ios 0x15b644;
 
     virtual void encodeWithCoder(DS_Dictionary* dict) = win 0x3465b0, imac 0x597d60, m1 0x4e1920, ios 0x15bb98;
@@ -19215,7 +19269,8 @@ class SongInfoObject : cocos2d::CCNode {
     gd::string getArtistNames(int unused) = win 0x3467b0, imac 0x597f70, m1 0x4e1ac8, ios 0x15bd40;
     int getExtraArtistCount() = win 0x346c00, m1 0x4e20a0, imac 0x598730, ios 0x15c0b4;
     gd::string getTagsString(bool shortTags) = win 0x346e60, imac 0x5988a0, m1 0x4e21ac, ios 0x15c100;
-    bool init(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string unknown, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345e60, imac 0x5970a0, m1 0x4e0e50, ios 0x15b378;
+    /// @param downloadLinkOverride The user-friendly page URL for the song
+    bool init(int songID, gd::string songName, gd::string artistName, int artistID, float filesize, gd::string youtubeVideo, gd::string youtubeChannel, gd::string url, gd::string downloadLinkOverride, int nongType, gd::string extraArtistIDs, bool isNew, int libraryOrder, int priority) = win 0x345e60, imac 0x5970a0, m1 0x4e0e50, ios 0x15b378;
     void updateArtists(gd::string artists) = win inline, imac 0x597310, m1 0x4e1090, ios 0x15b510;
 
     int m_songID;
@@ -19224,7 +19279,7 @@ class SongInfoObject : cocos2d::CCNode {
     gd::string m_youtubeVideo;
     gd::string m_youtubeChannel;
     gd::string m_songUrl;
-    gd::string m_unkString;
+    gd::string m_downloadLinkOverride;
     int m_artistID;
     float m_fileSize;
     int m_nongType;
@@ -19233,7 +19288,7 @@ class SongInfoObject : cocos2d::CCNode {
     bool m_verified;
     bool m_isBlocked;
     int m_priority;
-    int m_unkInt;
+    int m_duration; //in seconds
     int m_BPM;
     bool m_isNew;
     int m_libraryOrder;

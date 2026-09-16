@@ -6,26 +6,42 @@ use crate::types::cpp_to_rust_type;
 
 pub fn generate_member_field(field: &MemberField) -> String {
     let rust_type = cpp_to_rust_type(&field.ty.name);
-    let type_str = rust_type.to_rust_str();
+    let mut type_str = rust_type.to_rust_str();
+    if field.count > 0 {
+        type_str = format!("[{}; {}]", type_str, field.count);
+    }
     let name = sanitize_member_name(&field.name);
+
+    let renamed_doc = if field.renamed_from.is_empty() {
+        String::new()
+    } else {
+        format!("/// Renamed from: {}\n    ", field.renamed_from.join(", "))
+    };
 
     let platforms = broma_platform_to_codegen(field.platform);
 
     if platforms.is_empty() || field.platform == BromaPlatform::All {
-        format!("    pub {}: {},", name, type_str)
+        format!(
+            "    {}{}: {},",
+            renamed_doc,
+            format!("pub {name}"),
+            type_str
+        )
     } else if platforms.len() == 1 {
         format!(
-            "    #[cfg({})]\n    pub {}: {},",
+            "    #[cfg({})]\n    {}{}: {},",
             platforms[0].cfg_condition(),
-            name,
+            renamed_doc,
+            format!("pub {name}"),
             type_str
         )
     } else {
         let conditions: Vec<&str> = platforms.iter().map(|p| p.cfg_condition()).collect();
         format!(
-            "    #[cfg(any({}))]\n    pub {}: {},",
+            "    #[cfg(any({}))]\n    {}{}: {},",
             conditions.join(", "),
-            name,
+            renamed_doc,
+            format!("pub {name}"),
             type_str
         )
     }

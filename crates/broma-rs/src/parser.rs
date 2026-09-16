@@ -273,9 +273,13 @@ fn parse_member_expr(pair: pest::iterators::Pair<Rule>, scratch: &mut ScratchDat
     let mut platform = Platform::None;
     let mut name = String::new();
     let mut count = 0;
+    let mut renamed_from: Vec<String> = Vec::new();
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
+            Rule::attribute => {
+                renamed_from.extend(parse_renamed_from_attr(&inner));
+            }
             Rule::platform => {
                 if scratch.wip_platform_block.is_some() {
                     return Err(ParseError::PestError(
@@ -307,8 +311,37 @@ fn parse_member_expr(pair: pest::iterators::Pair<Rule>, scratch: &mut ScratchDat
         name,
         ty: std::mem::take(&mut scratch.wip_type),
         count,
+        renamed_from,
     });
     Ok(())
+}
+
+fn parse_renamed_from_attr(pair: &pest::iterators::Pair<Rule>) -> Vec<String> {
+    let mut out = Vec::new();
+    for outer in pair.clone().into_inner() {
+        match outer.as_rule() {
+            Rule::attribute_inner => {
+                for attr in outer.into_inner() {
+                    if attr.as_rule() == Rule::renamed_from_attribute {
+                        for id in attr.into_inner() {
+                            if id.as_rule() == Rule::identifier {
+                                out.push(id.as_str().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            Rule::renamed_from_attribute => {
+                for id in outer.into_inner() {
+                    if id.as_rule() == Rule::identifier {
+                        out.push(id.as_str().to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 fn parse_bind_expr(pair: pest::iterators::Pair<Rule>, scratch: &mut ScratchData) -> Result<()> {
