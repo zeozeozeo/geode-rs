@@ -8,7 +8,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-broma-rs = { version = "0.1.0", path = "../broma-rs" }
+broma-rs = { version = "0.2.0", path = "../broma-rs" }
 cfg-if = "1.0.4"
 lazy_static = "1.5.0"
 proc-macro2 = { version = "1.0", default-features = false }
