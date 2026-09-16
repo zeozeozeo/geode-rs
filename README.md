@@ -19,3 +19,4 @@ An effort to port the Geode client mod API to Rust (WIP).
 
 - android32 (untested, compiles), iOS, MacOS
 - ~~Automatically generate loader bindings? (long shot)~~ semi-done?
+- Find a way to implement/translate inline functions cleanly
